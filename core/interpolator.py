@@ -3,18 +3,20 @@ from scipy.interpolate import LinearNDInterpolator, griddata
 from scipy.spatial import cKDTree
 
 
-def create_3d_interpolation(data, resolution=10, is_train_only=True):
+def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='predicted_soil'):
     """
     Create a 3D interpolation of soil types from discrete CPT points
     
     Parameters:
     -----------
     data : pandas.DataFrame
-        DataFrame containing the CPT data with predicted soil types
+        DataFrame containing the CPT data with soil types
     resolution : int
         Resolution of the interpolation grid (smaller = higher resolution)
     is_train_only : bool
         Flag indicating if only training data is being used
+    soil_col : str
+        Column name containing soil types to interpolate
         
     Returns:
     --------
@@ -22,14 +24,11 @@ def create_3d_interpolation(data, resolution=10, is_train_only=True):
         Dictionary containing interpolation results including grid data and interpolator
     """
     dataset_type = "training data only" if is_train_only else "all data (training + testing)"
-    print(f"Creating 3D soil interpolation using {dataset_type}...")
-    
-    # Get the soil column to use - MODIFICATO per usare 'predicted_soil'
-    soil_col = 'predicted_soil'
+    print(f"Creating 3D soil interpolation using {dataset_type} with '{soil_col}' column...")
     
     # Verifica che la colonna esista
     if soil_col not in data.columns:
-        raise ValueError(f"Required column '{soil_col}' not found in data. Make sure predict_soil_types() was called.")
+        raise ValueError(f"Required column '{soil_col}' not found in data.")
     
     # Extract coordinates and soil types
     points = data[['x_coord', 'y_coord', data.columns[0]]].values  # Using first column as depth
@@ -140,7 +139,7 @@ def create_3d_interpolation(data, resolution=10, is_train_only=True):
     }
 
 
-def create_3d_interpolation_alternative(data, resolution=10, is_train_only=True):
+def create_3d_interpolation_alternative(data, resolution=10, is_train_only=True, soil_col='predicted_soil'):
     """
     Create a 3D interpolation of soil types using nearest neighbor method
     which is more robust than LinearNDInterpolator for problematic datasets
@@ -160,10 +159,11 @@ def create_3d_interpolation_alternative(data, resolution=10, is_train_only=True)
         Dictionary containing interpolation results including grid data and interpolator
     """
     dataset_type = "training data only" if is_train_only else "all data (training + testing)"
-    print(f"Creating 3D soil interpolation using {dataset_type} with nearest neighbor method...")
+    print(f"Creating 3D soil interpolation using {dataset_type} with '{soil_col}' column...")
     
     # Get the soil column to use - MODIFICATO per usare 'predicted_soil'
-    soil_col = 'predicted_soil'
+    if soil_col not in data.columns:
+        raise ValueError(f"Required column '{soil_col}' not found in data.")
     
     # Verifica che la colonna esista
     if soil_col not in data.columns:

@@ -152,19 +152,42 @@ def main(config_path="config.yaml"):
                 print(f"3D interpolation failed: {e}")
                 interpolation_data = None
 
-        # 7. Visualize 3D model
-        if interpolation_data is not None:
-            try:
-                framework.visualize_3d_model(
-                    interpolation_data, 
-                    interactive=display.get('interactive_visualization', True),
-                    use_test_data=use_test_data
-                )
-            except Exception as e:
-                print(f"3D visualization failed: {e}")
-                import traceback
-                traceback.print_exc()
-                print("Consider visualizing individual CPT profiles instead")
+    # 7. Visualize 3D model
+    if interpolation_data is not None:
+        try:
+            # Creare un modello 3D dal suolo reale (se disponibile)
+            real_interpolation_data = None
+            if 'soil []' in framework.cpt_data.columns:
+                try:
+                    print("Creating 3D model from real soil data...")
+                    if interpolation.get('try_alternative_first', True):
+                        real_interpolation_data = framework.create_3d_interpolation_alternative(
+                            resolution=resolution,
+                            use_test_data=use_test_data,
+                            soil_col='soil []'
+                        )
+                    else:
+                        real_interpolation_data = framework.create_3d_interpolation(
+                            resolution=resolution,
+                            use_test_data=use_test_data,
+                            soil_col='soil []'
+                        )
+                except Exception as e:
+                    print(f"Failed to create real soil model: {e}")
+                    real_interpolation_data = None
+            
+            # Visualizzare entrambi i modelli
+            framework.visualize_3d_model(
+                pred_interpolation_data=interpolation_data,
+                real_interpolation_data=real_interpolation_data,
+                interactive=display.get('interactive_visualization', True),
+                use_test_data=use_test_data
+            )
+        except Exception as e:
+            print(f"3D visualization failed: {e}")
+            import traceback
+            traceback.print_exc()
+            print("Consider visualizing individual CPT profiles instead")
     
     # 8. Save model for future use
     framework.save_model(model_output)

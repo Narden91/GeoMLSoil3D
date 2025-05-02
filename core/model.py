@@ -12,7 +12,7 @@ from visualization.plots import (
     plot_cpt_profile, 
     plot_feature_importance
 )
-from visualization.model_3d import visualize_3d_model
+from visualization.model_3d import visualize_3d_model, visualize_compare_3d_models
 from visualization.evaluation import plot_test_vs_predicted
 
 
@@ -384,128 +384,238 @@ class CPT_3D_SoilModel:
         
         return self.cpt_data['predicted_soil']
     
-    def create_3d_interpolation(self, resolution=10, use_test_data=False):
+    def create_3d_interpolation(self, resolution=10, use_test_data=False, soil_col='predicted_soil'):
         """
         Create a 3D interpolation of soil types from discrete CPT points
-        """
-        if self.cpt_data is None:
-            raise ValueError("No data loaded. Call load_data() first.")
-        
-        # Verifica se la colonna 'predicted_soil' è presente nei dataframe
-        if 'predicted_soil' not in self.cpt_data.columns:
-            raise ValueError("No soil predictions in cpt_data. Call predict_soil_types() first.")
-        
-        # Verifica nel train_data
-        if 'predicted_soil' not in self.train_data.columns:
-            raise ValueError("No soil predictions in train_data. There's an issue with predict_soil_types().")
-        
-        # Seleziona i dati da utilizzare per l'interpolazione
-        if use_test_data:
-            # Usa tutti i dati
-            data_to_use = self.cpt_data  
-            print(f"Using all data for interpolation ({len(data_to_use)} records)")
-        else:
-            # Usa solo i dati di training
-            data_to_use = self.train_data
-            print(f"Using only training data for interpolation ({len(data_to_use)} records)")
-        
-        # Verifica la presenza delle colonne necessarie
-        required_cols = ['x_coord', 'y_coord', data_to_use.columns[0], 'predicted_soil']
-        for col in required_cols:
-            if col not in data_to_use.columns:
-                raise ValueError(f"Required column '{col}' not found in data_to_use")
-        
-        # Stampa le prime righe per debug
-        print("First 5 rows of data_to_use:")
-        print(data_to_use[required_cols].head())
-        
-        # Crea l'interpolazione
-        from core.interpolator import create_3d_interpolation as interp_func
-        interp_result = interp_func(
-            data_to_use,
-            resolution=resolution,
-            is_train_only=not use_test_data
-        )
-        
-        # Salva l'interpolatore
-        self.interpolator = interp_result['interpolator']
-        
-        return interp_result['grid_data']
-    
-    def create_3d_interpolation_alternative(self, resolution=10, use_test_data=False):
-        """
-        Create a 3D interpolation of soil types using nearest neighbor method
-        """
-        if self.cpt_data is None:
-            raise ValueError("No data loaded. Call load_data() first.")
-        
-        # Verifica se la colonna 'predicted_soil' è presente nei dataframe
-        if 'predicted_soil' not in self.cpt_data.columns:
-            raise ValueError("No soil predictions in cpt_data. Call predict_soil_types() first.")
-        
-        # Verifica nel train_data
-        if 'predicted_soil' not in self.train_data.columns:
-            raise ValueError("No soil predictions in train_data. There's an issue with predict_soil_types().")
-        
-        # Seleziona i dati da utilizzare per l'interpolazione
-        if use_test_data:
-            # Usa tutti i dati
-            data_to_use = self.cpt_data  
-            print(f"Using all data for interpolation ({len(data_to_use)} records)")
-        else:
-            # Usa solo i dati di training
-            data_to_use = self.train_data
-            print(f"Using only training data for interpolation ({len(data_to_use)} records)")
-        
-        # Verifica la presenza delle colonne necessarie
-        required_cols = ['x_coord', 'y_coord', data_to_use.columns[0], 'predicted_soil']
-        for col in required_cols:
-            if col not in data_to_use.columns:
-                raise ValueError(f"Required column '{col}' not found in data_to_use")
-        
-        # Stampa le prime righe per debug
-        print("First 5 rows of data_to_use:")
-        print(data_to_use[required_cols].head())
-        
-        # Crea l'interpolazione
-        from core.interpolator import create_3d_interpolation_alternative as interp_func
-        interp_result = interp_func(
-            data_to_use,
-            resolution=resolution,
-            is_train_only=not use_test_data
-        )
-        
-        # Salva l'interpolatore
-        self.interpolator = interp_result['interpolator']
-        
-        return interp_result['grid_data']
-    
-    def visualize_3d_model(self, interpolation_data=None, interactive=True, use_test_data=False):
-        """
-        Visualize the 3D soil model
         
         Parameters:
         -----------
-        interpolation_data : dict, optional
-            Output from create_3d_interpolation()
+        resolution : int
+            Resolution of the interpolation grid
+        use_test_data : bool
+            Whether to include test data in the interpolation
+        soil_col : str
+            Column name containing soil types to interpolate
+            
+        Returns:
+        --------
+        dict
+            Grid data for 3D visualization
+        """
+        if self.cpt_data is None:
+            raise ValueError("No data loaded. Call load_data() first.")
+        
+        # Verifica se la colonna del suolo specificata è presente nei dataframe
+        if soil_col not in self.cpt_data.columns:
+            raise ValueError(f"No soil column '{soil_col}' in cpt_data. Call predict_soil_types() first or use 'soil []' for real values.")
+        
+        # Seleziona i dati da utilizzare per l'interpolazione
+        if use_test_data:
+            # Usa tutti i dati
+            data_to_use = self.cpt_data  
+            print(f"Using all data for interpolation ({len(data_to_use)} records)")
+        else:
+            # Usa solo i dati di training
+            data_to_use = self.train_data
+            print(f"Using only training data for interpolation ({len(data_to_use)} records)")
+        
+        # Verifica che la colonna del suolo sia presente nei dati da usare
+        if soil_col not in data_to_use.columns:
+            raise ValueError(f"Required column '{soil_col}' not found in data_to_use")
+        
+        # Verifica la presenza delle colonne necessarie
+        required_cols = ['x_coord', 'y_coord', data_to_use.columns[0]]
+        for col in required_cols:
+            if col not in data_to_use.columns:
+                raise ValueError(f"Required column '{col}' not found in data_to_use")
+        
+        # Stampa le prime righe per debug
+        print(f"First 5 rows of data_to_use with {soil_col} column:")
+        print(data_to_use[required_cols + [soil_col]].head())
+        
+        # Crea l'interpolazione
+        from core.interpolator import create_3d_interpolation as interp_func
+        
+        # Modifica temporanea per adattarsi all'API esistente
+        # Salva il valore originale di predicted_soil
+        if soil_col != 'predicted_soil' and 'predicted_soil' in data_to_use.columns:
+            backup_col = data_to_use['predicted_soil'].copy()
+            data_to_use['predicted_soil'] = data_to_use[soil_col]
+        
+        interp_result = interp_func(
+            data_to_use,
+            resolution=resolution,
+            is_train_only=not use_test_data
+        )
+        
+        # Ripristina il valore originale
+        if soil_col != 'predicted_soil' and 'predicted_soil' in data_to_use.columns:
+            data_to_use['predicted_soil'] = backup_col
+        
+        # Salva l'interpolatore
+        self.interpolator = interp_result['interpolator']
+        
+        return interp_result['grid_data']
+    
+    def create_3d_interpolation_alternative(self, resolution=10, use_test_data=False, soil_col='predicted_soil'):
+        """
+        Create a 3D interpolation of soil types using nearest neighbor method
+        
+        Parameters:
+        -----------
+        resolution : int
+            Resolution of the interpolation grid
+        use_test_data : bool
+            Whether to include test data in the interpolation
+        soil_col : str
+            Column name containing soil types to interpolate
+            
+        Returns:
+        --------
+        dict
+            Grid data for 3D visualization
+        """
+        if self.cpt_data is None:
+            raise ValueError("No data loaded. Call load_data() first.")
+        
+        # Verifica se la colonna del suolo specificata è presente nei dataframe
+        if soil_col not in self.cpt_data.columns:
+            raise ValueError(f"No soil column '{soil_col}' in cpt_data. Call predict_soil_types() first or use 'soil []' for real values.")
+        
+        # Seleziona i dati da utilizzare per l'interpolazione
+        if use_test_data:
+            # Usa tutti i dati
+            data_to_use = self.cpt_data.copy()  
+            print(f"Using all data for interpolation with {soil_col} column ({len(data_to_use)} records)")
+        else:
+            # Usa solo i dati di training
+            data_to_use = self.train_data.copy()
+            print(f"Using only training data for interpolation with {soil_col} column ({len(data_to_use)} records)")
+        
+        # Verifica che la colonna del suolo sia presente nei dati da usare
+        if soil_col not in data_to_use.columns:
+            raise ValueError(f"Required column '{soil_col}' not found in data_to_use")
+        
+        # Verifica la presenza delle colonne necessarie
+        required_cols = ['x_coord', 'y_coord', data_to_use.columns[0]]
+        for col in required_cols:
+            if col not in data_to_use.columns:
+                raise ValueError(f"Required column '{col}' not found in data_to_use")
+        
+        # Stampa le prime righe per debug
+        print(f"First 5 rows of data_to_use with {soil_col} column:")
+        print(data_to_use[required_cols + [soil_col]].head())
+        
+        # Crea l'interpolazione
+        from core.interpolator import create_3d_interpolation_alternative as interp_func
+        
+        # Modifica temporanea per adattarsi all'API esistente
+        # Salva il valore originale di predicted_soil
+        if soil_col != 'predicted_soil':
+            if 'predicted_soil' in data_to_use.columns:
+                backup_col = data_to_use['predicted_soil'].copy()
+            data_to_use['predicted_soil'] = data_to_use[soil_col]
+        
+        interp_result = interp_func(
+            data_to_use,
+            resolution=resolution,
+            is_train_only=not use_test_data
+        )
+        
+        # Ripristina il valore originale
+        if soil_col != 'predicted_soil' and 'predicted_soil' in data_to_use.columns and 'backup_col' in locals():
+            data_to_use['predicted_soil'] = backup_col
+        
+        # Salva l'interpolatore
+        self.interpolator = interp_result['interpolator']
+        
+        return interp_result['grid_data']
+    
+    def visualize_3d_model(self, pred_interpolation_data=None, real_interpolation_data=None, 
+                          interactive=True, use_test_data=False):
+        """
+        Visualize the 3D soil model with option to compare predicted and real models
+        
+        Parameters:
+        -----------
+        pred_interpolation_data : dict, optional
+            Output from create_3d_interpolation() for predicted soil
+        real_interpolation_data : dict, optional
+            Output from create_3d_interpolation() for real soil
         interactive : bool
             Whether to create an interactive Plotly visualization
         use_test_data : bool
             Whether to include test data in the visualization
-        """
-        if interpolation_data is None:
-            interpolation_data = self.create_3d_interpolation(use_test_data=use_test_data)
             
+        Returns:
+        --------
+        Figure object from plotting library
+        """
         # Choose which dataset to visualize
         data_to_visualize = self.cpt_data if use_test_data else self.train_data
         
-        return visualize_3d_model(
-            data_to_visualize,
-            interpolation_data,
-            self.soil_types,
-            self.soil_colors,
-            interactive
-        )
+        # Se non ci sono dati di interpolazione predetti, creali
+        if pred_interpolation_data is None:
+            try:
+                print("Creating predicted soil 3D model...")
+                pred_interpolation_data = self.create_3d_interpolation(
+                    use_test_data=use_test_data,
+                    soil_col='predicted_soil'
+                )
+            except Exception as e:
+                print(f"Failed to create predicted soil model: {e}")
+                try:
+                    print("Trying alternative interpolation for predicted soil...")
+                    pred_interpolation_data = self.create_3d_interpolation_alternative(
+                        use_test_data=use_test_data,
+                        soil_col='predicted_soil'
+                    )
+                except Exception as e:
+                    print(f"Alternative interpolation also failed: {e}")
+                    return None
+        
+        # Se non ci sono dati di interpolazione reali e la colonna 'soil []' esiste, creali
+        if real_interpolation_data is None and 'soil []' in self.cpt_data.columns:
+            try:
+                print("Creating real soil model from actual CPT data...")
+                real_interpolation_data = self.create_3d_interpolation(
+                    use_test_data=use_test_data,
+                    soil_col='soil []'
+                )
+            except Exception as e:
+                print(f"Failed to create real soil model: {e}")
+                try:
+                    print("Trying alternative interpolation for real soil...")
+                    real_interpolation_data = self.create_3d_interpolation_alternative(
+                        use_test_data=use_test_data,
+                        soil_col='soil []'
+                    )
+                except Exception as e:
+                    print(f"Alternative interpolation for real soil also failed: {e}")
+                    real_interpolation_data = None
+        
+        # Se ci sono entrambi i modelli, usa la visualizzazione comparativa
+        if real_interpolation_data is not None:
+            print("Visualizing comparative 3D model (predicted vs real soil)...")
+            from visualization.model_3d import visualize_compare_3d_models
+            return visualize_compare_3d_models(
+                data_to_visualize,
+                pred_interpolation_data,
+                real_interpolation_data,
+                self.soil_types,
+                self.soil_colors,
+                interactive
+            )
+        else:
+            print("Visualizing predicted soil 3D model only...")
+            from visualization.model_3d import visualize_3d_model
+            return visualize_3d_model(
+                data_to_visualize,
+                pred_interpolation_data,
+                self.soil_types,
+                self.soil_colors,
+                interactive
+            )
     
     def save_model(self, filename='cpt_soil_model.pkl'):
         """
