@@ -1,0 +1,65 @@
+# GeoMLSoil3D Configuration File
+
+# Percorsi generali
+paths:
+  data: "data/CPT_*.csv"  # Pattern per i file di dati CPT
+  model_output: "cpt_soil_model.pkl"  # File per salvare il modello
+  output_dir: "output/"  # Cartella per i risultati
+
+# Impostazioni di debug
+debug:
+  enabled: false  # Abilita modalità debug
+  verbose: false  # Output dettagliato
+  save_logs: false  # Salvare i log su file
+  log_file: "geoml_soil_3d.log"  # Nome file di log
+
+# Impostazioni di visualizzazione
+display:
+  show_soil_legend: false  # Mostra la legenda dei tipi di suolo all'inizio
+  show_soil_abbreviations: false  # Mostra le abbreviazioni dei tipi di suolo alla fine
+  show_dataset_overview: true  # Mostra panoramica del dataset
+  show_soil_distribution: true  # Mostra distribuzione tipi di suolo
+  plot_cpt_locations: true  # Visualizza posizioni CPT
+  plot_cpt_profiles: true  # Visualizza profili CPT
+  plot_feature_importance: true  # Visualizza importanza delle caratteristiche
+  interactive_visualization: true  # Usa visualizzazione interattiva Plotly
+  cross_sections: false  # Mostra sezioni trasversali del modello 3D
+
+# Parametri per caricamento dati
+data_loading:
+  add_artificial_coordinates: true  # Genera coordinate artificiali se mancanti
+  coordinate_jitter: 0.5  # Variazione massima per coordinate artificiali (metri)
+  spiral_pattern: true  # Usa un pattern a spirale per le coordinate artificiali
+  x_coord_col: null  # Nome colonna coordinata X (null = automatico)
+  y_coord_col: null  # Nome colonna coordinata Y (null = automatico)
+
+# Parametri per la classificazione del suolo
+soil_classification:
+  enabled: true  # Esegui la classificazione del suolo
+  model_type: "rf"  # Tipo di modello: 'rf' (Random Forest) o 'xgb' (XGBoost)
+  test_size: 0.2  # Percentuale dati per test
+  random_state: 42  # Seed per riproducibilità
+  compute_missing: true  # Calcola i tipi di suolo mancanti usando qc e Rf
+  features:  # Features da utilizzare per la classificazione
+    - "qc [MPa]"
+    - "fs [MPa]"
+    - "Rf [%]"
+    - "u2 [MPa]"
+
+# Parametri per l'interpolazione 3D
+interpolation:
+  enabled: true  # Esegui l'interpolazione 3D
+  resolution: 5  # Risoluzione della griglia (minore = più dettagliata)
+  try_alternative_first: true  # Prova prima il metodo alternativo
+  margin: 5  # Margine attorno ai dati (metri)
+  z_resolution_factor: 0.5  # Fattore per aumentare risoluzione verticale
+  vertical_exaggeration: 0.5  # Esagerazione verticale per visualizzazione
+
+# Colori e stile
+styling:
+  colormap: "viridis"  # Mappa colori predefinita
+  point_size: 5  # Dimensione punti nei grafici scatter
+  line_width: 1.5  # Spessore linee
+  soil_colors:  # Colori personalizzati per tipi di suolo (opzionale)
+    # 1: "#ff0000"  # Esempio: tipo 1 in rosso
+    # 2: "#00ff00"  # Esempio: tipo 2 in verde

@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
 from mpl_toolkits.mplot3d import Axes3D
+from soil_types import SoilTypeManager
 
 
 def plot_cpt_locations(cpt_data):
@@ -72,10 +73,27 @@ def plot_cpt_profile(cpt_data, example_cpt=None):
         jitter = np.random.normal(0, 0.1, size=len(soil_data))
         soil_data['soil_jitter'] = soil_data['soil []'] + jitter
         
-        axes[2].scatter(soil_data['soil_jitter'], soil_data[depth_col], 
-                       c=soil_data['soil []'], cmap='viridis')
+        # Create a colormap with distinct colors for each soil type
+        unique_soil_types = sorted(soil_data['soil []'].unique())
+        cmap = plt.cm.get_cmap('viridis', len(unique_soil_types))
+        
+        # Plot soil types with colors
+        sc = axes[2].scatter(soil_data['soil_jitter'], soil_data[depth_col], 
+                           c=soil_data['soil []'], cmap=cmap, vmin=min(unique_soil_types)-0.5, 
+                           vmax=max(unique_soil_types)+0.5)
+        
+        # Create custom tick labels with abbreviations
+        tick_positions = np.arange(min(unique_soil_types), max(unique_soil_types)+1)
+        tick_labels = [f"{st} - {SoilTypeManager.get_abbreviation(st)}" for st in tick_positions]
+        
+        # Add colorbar with custom ticks
+        cbar = plt.colorbar(sc, ax=axes[2], ticks=tick_positions)
+        cbar.ax.set_yticklabels(tick_labels)
+        
         axes[2].set_xlabel('Soil Type')
         axes[2].set_title('Soil Classification')
+        axes[2].set_xticks(tick_positions)
+        axes[2].set_xticklabels(tick_labels, rotation=45, ha='right')
         axes[2].grid(True)
         axes[2].invert_yaxis()
     
@@ -136,17 +154,33 @@ def visualize_3d_model(cpt_data, interpolation_data, soil_types=None, soil_color
         # Create interactive 3D visualization with Plotly
         fig = go.Figure()
         
-        # Create colormap
+        # Create colormap and labels
         if soil_colors is None:
             # Default colormap
             colorscale = 'Viridis'
+            tickvals = None
+            ticktext = None
         else:
             # Custom colormap from soil types
             colorscale = []
             soil_types_sorted = sorted(soil_colors.keys())
-            for i, soil_type in enumerate(soil_types_sorted):
-                normalized_val = i / (len(soil_types_sorted) - 1)
-                colorscale.append([normalized_val, soil_colors[soil_type]])
+            tickvals = soil_types_sorted
+            
+            # Create tick labels with abbreviations
+            if isinstance(soil_colors[soil_types_sorted[0]], dict):
+                # Nuovo formato con label
+                ticktext = [soil_colors[soil_type]['label'] for soil_type in soil_types_sorted]
+                
+                for i, soil_type in enumerate(soil_types_sorted):
+                    normalized_val = i / (len(soil_types_sorted) - 1)
+                    colorscale.append([normalized_val, soil_colors[soil_type]['color']])
+            else:
+                # Vecchio formato
+                ticktext = [f"{st} - {SoilTypeManager.get_abbreviation(st)}" for st in soil_types_sorted]
+                
+                for i, soil_type in enumerate(soil_types_sorted):
+                    normalized_val = i / (len(soil_types_sorted) - 1)
+                    colorscale.append([normalized_val, soil_colors[soil_type]])
         
         # Add a volume trace
         fig.add_trace(go.Volume(
@@ -161,7 +195,8 @@ def visualize_3d_model(cpt_data, interpolation_data, soil_types=None, soil_color
             colorscale=colorscale,
             colorbar=dict(
                 title='Soil Type',
-                tickvals=soil_types if soil_types else None
+                tickvals=tickvals,
+                ticktext=ticktext
             )
         ))
         
@@ -208,13 +243,17 @@ def visualize_3d_model(cpt_data, interpolation_data, soil_types=None, soil_color
         # Sampling the grid to avoid too many points
         sample_step = 3
         
+        # Prepare colormap
+        unique_soil_types = sorted(np.unique(values))
+        cmap = plt.cm.get_cmap('viridis', len(unique_soil_types))
+        
         # Create scatter plot of soil types
         scatter = ax.scatter(
             X[::sample_step, ::sample_step, ::sample_step].flatten(),
             Y[::sample_step, ::sample_step, ::sample_step].flatten(),
             Z[::sample_step, ::sample_step, ::sample_step].flatten(),
             c=values[::sample_step, ::sample_step, ::sample_step].flatten(),
-            cmap='viridis',
+            cmap=cmap,
             alpha=0.3,
             marker='o',
             s=5
@@ -241,11 +280,39 @@ def visualize_3d_model(cpt_data, interpolation_data, soil_types=None, soil_color
         # Invert z-axis for depth
         ax.invert_zaxis()
         
-        # Add a color bar
-        cbar = plt.colorbar(scatter, ax=ax, pad=0.1)
+        # Add a color bar with custom tick labels
+        cbar = plt.colorbar(scatter, ax=ax, pad=0.1, ticks=unique_soil_types)
         cbar.set_label('Soil Type')
+        
+        # Set tick labels with abbreviations
+        tick_labels = [f"{st} - {SoilTypeManager.get_abbreviation(st)}" for st in unique_soil_types]
+        cbar.ax.set_yticklabels(tick_labels)
         
         plt.tight_layout()
         plt.show()
         
         return fig
+
+
+def plot_soil_legend():
+    """
+    Plot a legend with all soil types and their abbreviations
+    """
+    soil_types = SoilTypeManager.get_all_types()
+    
+    # Corretto: usa plt.subplots() che restituisce sia figura che assi
+    fig, ax = plt.subplots(figsize=(12, len(soil_types) * 0.4))
+    
+    # Create a simple legend/table
+    for i, (soil_id, soil_info) in enumerate(soil_types.items()):
+        abbr = soil_info['abbr']
+        desc = soil_info['desc']
+        
+        ax.text(0.05, 1 - (i+1) * 0.1, f"{soil_id}", fontweight='bold')
+        ax.text(0.15, 1 - (i+1) * 0.1, f"{abbr}", fontweight='bold')
+        ax.text(0.25, 1 - (i+1) * 0.1, f"{desc}")
+    
+    ax.set_title("Soil Type Classification Legend")
+    ax.axis('off')
+    plt.tight_layout()
+    plt.show()

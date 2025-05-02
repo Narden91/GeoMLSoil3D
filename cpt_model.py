@@ -11,7 +11,6 @@ from glob import glob
 import os
 import joblib
 
-# Import local modules
 from utils import generate_spiral_coords, get_compatible_colormap
 from visualization import (
     plot_cpt_locations, 
@@ -19,6 +18,7 @@ from visualization import (
     plot_feature_importance, 
     visualize_3d_model
 )
+from soil_types import SoilTypeManager
 
 
 class CPT_3D_SoilModel:
@@ -35,6 +35,7 @@ class CPT_3D_SoilModel:
         self.soil_types = None
         self.soil_colors = None
         self.interpolator = None
+        self.soil_manager = SoilTypeManager()
     
     def load_data(self, file_pattern, x_coord_col=None, y_coord_col=None):
         """
@@ -99,6 +100,18 @@ class CPT_3D_SoilModel:
                     # Rename to standard column names
                     df.rename(columns={x_coord_col: 'x_coord', y_coord_col: 'y_coord'}, inplace=True)
                 
+                # Codificare il tipo di suolo se qc e Rf sono presenti nei dati
+                if 'qc [MPa]' in df.columns and 'Rf [%]' in df.columns and 'soil []' not in df.columns:
+                    print(f"Computing soil types for {file_name} based on qc and Rf")
+                    df['soil []'] = df.apply(
+                        lambda row: SoilTypeManager.code_from_qc_rf(row['qc [MPa]'], row['Rf [%]']), 
+                        axis=1
+                    )
+                
+                # Aggiungere le abbreviazioni e le descrizioni dei tipi di suolo
+                if 'soil []' in df.columns:
+                    df = SoilTypeManager.convert_dataset_labels(df)
+                
                 all_data.append(df)
                 print(f"Loaded {len(df)} records from {file_name}")
                 
@@ -125,37 +138,65 @@ class CPT_3D_SoilModel:
                 # Create a color map for soil types
                 cmap = get_compatible_colormap('viridis', len(self.soil_types))
                 
-                self.soil_colors = {soil_type: f'rgb({int(255*r)},{int(255*g)},{int(255*b)})' 
-                               for soil_type, (r,g,b,_) in zip(self.soil_types, 
-                                                            [cmap(i) for i in range(len(self.soil_types))])}
+                # Create a soil_labels dictionary
+                soil_labels = SoilTypeManager.create_label_map()
+                
+                # Create color dictionary with labels that include abbreviations
+                self.soil_colors = {}
+                for soil_type, (r,g,b,_) in zip(self.soil_types, 
+                                               [cmap(i) for i in range(len(self.soil_types))]):
+                    key = soil_type
+                    label = soil_labels.get(soil_type, f"{soil_type}")
+                    self.soil_colors[key] = {
+                        'color': f'rgb({int(255*r)},{int(255*g)},{int(255*b)})',
+                        'label': label
+                    }
         else:
             raise ValueError("No data could be loaded")
         
         return self.cpt_data
 
-    def explore_data(self):
-        """Explore and visualize the loaded data"""
+    def explore_data(self, show_dataset_overview=True, show_soil_distribution=True, show_cpt_locations=True, show_cpt_profiles=True):
+        """
+        Explore and visualize the loaded data
+        
+        Parameters:
+        -----------
+        show_dataset_overview : bool
+            Whether to display dataset overview
+        show_soil_distribution : bool
+            Whether to show soil type distribution
+        show_cpt_locations : bool
+            Whether to plot CPT locations
+        show_cpt_profiles : bool
+            Whether to plot CPT profiles
+        """
         if self.cpt_data is None:
             raise ValueError("No data loaded. Call load_data() first.")
         
         # Basic information
-        print("\nDataset Overview:")
-        print(f"Total records: {len(self.cpt_data)}")
-        print(f"CPT locations: {self.cpt_data['cpt_id'].nunique()}")
-        print(f"Columns: {', '.join(self.cpt_data.columns)}")
+        if show_dataset_overview:
+            print("\nDataset Overview:")
+            print(f"Total records: {len(self.cpt_data)}")
+            print(f"CPT locations: {self.cpt_data['cpt_id'].nunique()}")
+            print(f"Columns: {', '.join(self.cpt_data.columns)}")
         
         # Check for soil classification column
-        if 'soil []' in self.cpt_data.columns:
+        if 'soil []' in self.cpt_data.columns and show_soil_distribution:
             soil_counts = self.cpt_data['soil []'].value_counts()
             print("\nSoil Type Distribution:")
             for soil_type, count in soil_counts.items():
-                print(f"  Type {soil_type}: {count} records ({count/len(self.cpt_data)*100:.1f}%)")
+                abbr = SoilTypeManager.get_abbreviation(soil_type)
+                print(f"  Type {soil_type} ({abbr}): {count} records ({count/len(self.cpt_data)*100:.1f}%)")
         
         # Plot CPT locations
-        plot_cpt_locations(self.cpt_data)
+        if show_cpt_locations:
+            from visualization import plot_cpt_locations
+            plot_cpt_locations(self.cpt_data)
         
         # Plot example CPT profile
-        if len(self.cpt_data['cpt_id'].unique()) > 0:
+        if show_cpt_profiles and len(self.cpt_data['cpt_id'].unique()) > 0:
+            from visualization import plot_cpt_profile
             plot_cpt_profile(self.cpt_data)
     
     def train_soil_classification_model(self, test_size=0.2, random_state=42, model_type='rf'):
@@ -241,6 +282,15 @@ class CPT_3D_SoilModel:
         print("\nClassification Report:")
         print(classification_report(y_test, y_pred))
         
+        # Stampa intestazioni con abbreviazioni
+        print("\nClassification Results by Soil Type:")
+        for soil_type in sorted(set(y_test)):
+            abbr = SoilTypeManager.get_abbreviation(soil_type)
+            desc = SoilTypeManager.get_description(soil_type)
+            mask = (y_test == soil_type)
+            accuracy = (y_pred[mask] == soil_type).mean() if mask.sum() > 0 else 0
+            print(f"  Type {soil_type} ({abbr}) - {desc}: Accuracy {accuracy:.4f}")
+        
         # Feature importance
         if hasattr(self.soil_model, 'feature_importances_'):
             plot_feature_importance(self.soil_model, self.feature_columns)
@@ -268,10 +318,23 @@ class CPT_3D_SoilModel:
         # Predict soil types
         self.cpt_data['predicted_soil'] = self.soil_model.predict(X_scaled)
         
+        # Add abbreviations and descriptions for the predicted soil types
+        self.cpt_data['predicted_soil_abbr'] = self.cpt_data['predicted_soil'].apply(SoilTypeManager.get_abbreviation)
+        self.cpt_data['predicted_soil_desc'] = self.cpt_data['predicted_soil'].apply(SoilTypeManager.get_description)
+        
         # If original soil types exist, compare predictions
         if 'soil []' in self.cpt_data.columns:
             accuracy = (self.cpt_data['predicted_soil'] == self.cpt_data['soil []']).mean()
             print(f"Overall prediction accuracy: {accuracy:.4f}")
+            
+            # Report by soil type
+            print("\nPrediction accuracy by soil type:")
+            for soil_type in sorted(self.cpt_data['soil []'].unique()):
+                abbr = SoilTypeManager.get_abbreviation(soil_type)
+                mask = (self.cpt_data['soil []'] == soil_type)
+                count = mask.sum()
+                type_accuracy = (self.cpt_data.loc[mask, 'predicted_soil'] == soil_type).mean() if count > 0 else 0
+                print(f"  Type {soil_type} ({abbr}): {type_accuracy:.4f} accuracy ({count} samples)")
         
         return self.cpt_data['predicted_soil']
     
@@ -284,6 +347,7 @@ class CPT_3D_SoilModel:
         resolution : int
             Resolution of the interpolation grid (smaller = higher resolution)
         """
+        # Il resto del metodo rimane invariato rispetto alla versione originale
         if self.cpt_data is None:
             raise ValueError("No data loaded. Call load_data() first.")
             
