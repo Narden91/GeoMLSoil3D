@@ -1,0 +1,49 @@
+data_loading:
+  add_artificial_coordinates: true
+  coordinate_jitter: 0.5
+  spiral_pattern: true
+  x_coord_col: null
+  y_coord_col: null
+debug:
+  enabled: false
+  log_file: geoml_soil_3d.log
+  save_logs: false
+  verbose: false
+display:
+  cross_sections: false
+  include_test_in_3d: false
+  interactive_visualization: true
+  plot_cpt_locations: true
+  plot_cpt_profiles: true
+  plot_feature_importance: true
+  show_dataset_overview: true
+  show_soil_abbreviations: false
+  show_soil_distribution: true
+  show_soil_legend: false
+interpolation:
+  enabled: true
+  margin: 5
+  resolution: 5
+  try_alternative_first: true
+  vertical_exaggeration: 0.5
+  z_resolution_factor: 0.5
+paths:
+  data: data/CPT_*.csv
+  model_output: cpt_soil_model.pkl
+  output_dir: output/
+soil_classification:
+  compute_missing: true
+  enabled: true
+  features:
+  - qc [MPa]
+  - fs [MPa]
+  - Rf [%]
+  - u2 [MPa]
+  model_type: rf
+  random_state: 42
+  test_size: 0.2
+styling:
+  colormap: viridis
+  line_width: 1.5
+  point_size: 5
+  soil_colors: null

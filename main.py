@@ -113,6 +113,16 @@ def main(config_path="config.yaml"):
         resolution = interpolation.get('resolution', 5)
         use_test_data = display.get('include_test_in_3d', False)
         
+        # Assicurati che i dati abbiano la colonna predicted_soil
+        if 'predicted_soil' not in framework.train_data.columns:
+            print("Warning: 'predicted_soil' column not found in train_data. Re-calling predict_soil_types()")
+            framework.predict_soil_types()
+        
+        # Verifica che ci siano sufficienti coordinate uniche
+        x_unique = framework.train_data['x_coord'].nunique()
+        y_unique = framework.train_data['y_coord'].nunique()
+        print(f"Training data has {x_unique} unique x-coordinates and {y_unique} unique y-coordinates")
+        
         if interpolation.get('try_alternative_first', True):
             try:
                 print("Trying alternative interpolation method...")
@@ -141,7 +151,7 @@ def main(config_path="config.yaml"):
             except Exception as e:
                 print(f"3D interpolation failed: {e}")
                 interpolation_data = None
-    
+
         # 7. Visualize 3D model
         if interpolation_data is not None:
             try:
@@ -152,6 +162,8 @@ def main(config_path="config.yaml"):
                 )
             except Exception as e:
                 print(f"3D visualization failed: {e}")
+                import traceback
+                traceback.print_exc()
                 print("Consider visualizing individual CPT profiles instead")
     
     # 8. Save model for future use

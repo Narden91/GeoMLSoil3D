@@ -314,70 +314,120 @@ class CPT_3D_SoilModel:
     
     def predict_soil_types(self):
         """
-        Predict soil types for all CPT data points using the trained model
+        Predict soil types for CPT data points using the trained model
         """
         if self.cpt_data is None:
             raise ValueError("No data loaded. Call load_data() first.")
-            
+                
         if self.soil_model is None:
             raise ValueError("No model trained. Call train_soil_classification_model() first.")
         
         print("Predicting soil types for all data...")
         
         # Predict on all data
-        self.cpt_data = predict_soil_types(
+        from core.classifier import predict_soil_types as predict_func
+        self.cpt_data = predict_func(
             self.cpt_data,
             self.soil_model,
             self.scaler,
             self.feature_columns
         )
         
-        # Separate predictions for training and testing data
-        train_mask = self.cpt_data['is_train'] == True
-        test_mask = self.cpt_data['is_train'] == False
+        # Importante: aggiungi le colonne predicted anche ai dataframe train e test
+        # usando l'identificatore cpt_id per il matching
+        print("Updating train and test dataframes with predictions...")
         
-        # Calculate accuracy for training data
+        # Per ogni CPT nel set di train
+        for cpt_id in self.train_data['cpt_id'].unique():
+            # Ottieni le predizioni dal dataframe completo
+            mask_cpt = self.cpt_data['cpt_id'] == cpt_id
+            pred_soil = self.cpt_data.loc[mask_cpt, 'predicted_soil'].values
+            pred_abbr = self.cpt_data.loc[mask_cpt, 'predicted_soil_abbr'].values
+            pred_desc = self.cpt_data.loc[mask_cpt, 'predicted_soil_desc'].values
+            
+            # Aggiungi le predizioni al dataframe di train
+            mask_train = self.train_data['cpt_id'] == cpt_id
+            self.train_data.loc[mask_train, 'predicted_soil'] = pred_soil
+            self.train_data.loc[mask_train, 'predicted_soil_abbr'] = pred_abbr
+            self.train_data.loc[mask_train, 'predicted_soil_desc'] = pred_desc
+        
+        # Per ogni CPT nel set di test
+        for cpt_id in self.test_data['cpt_id'].unique():
+            # Ottieni le predizioni dal dataframe completo
+            mask_cpt = self.cpt_data['cpt_id'] == cpt_id
+            pred_soil = self.cpt_data.loc[mask_cpt, 'predicted_soil'].values
+            pred_abbr = self.cpt_data.loc[mask_cpt, 'predicted_soil_abbr'].values
+            pred_desc = self.cpt_data.loc[mask_cpt, 'predicted_soil_desc'].values
+            
+            # Aggiungi le predizioni al dataframe di test
+            mask_test = self.test_data['cpt_id'] == cpt_id
+            self.test_data.loc[mask_test, 'predicted_soil'] = pred_soil
+            self.test_data.loc[mask_test, 'predicted_soil_abbr'] = pred_abbr
+            self.test_data.loc[mask_test, 'predicted_soil_desc'] = pred_desc
+        
+        # Verifica che le colonne siano state aggiunte correttamente
+        print(f"Train data shape: {self.train_data.shape}, 'predicted_soil' in columns: {'predicted_soil' in self.train_data.columns}")
+        print(f"Test data shape: {self.test_data.shape}, 'predicted_soil' in columns: {'predicted_soil' in self.test_data.columns}")
+        
+        # Calcola accuratezza 
         if 'soil []' in self.cpt_data.columns:
+            train_mask = self.cpt_data['is_train'] == True
+            test_mask = self.cpt_data['is_train'] == False
+            
             train_accuracy = (self.cpt_data.loc[train_mask, 'predicted_soil'] == 
-                              self.cpt_data.loc[train_mask, 'soil []']).mean()
+                            self.cpt_data.loc[train_mask, 'soil []']).mean()
             print(f"Training data prediction accuracy: {train_accuracy:.4f}")
             
-            # If we already evaluated on test data, we can skip this
-            if 'predicted_soil' not in self.test_data.columns:
-                test_accuracy = (self.cpt_data.loc[test_mask, 'predicted_soil'] == 
-                                self.cpt_data.loc[test_mask, 'soil []']).mean()
-                print(f"Test data prediction accuracy: {test_accuracy:.4f}")
+            test_accuracy = (self.cpt_data.loc[test_mask, 'predicted_soil'] == 
+                            self.cpt_data.loc[test_mask, 'soil []']).mean()
+            print(f"Test data prediction accuracy: {test_accuracy:.4f}")
         
         return self.cpt_data['predicted_soil']
     
     def create_3d_interpolation(self, resolution=10, use_test_data=False):
         """
         Create a 3D interpolation of soil types from discrete CPT points
-        
-        Parameters:
-        -----------
-        resolution : int
-            Resolution of the interpolation grid (smaller = higher resolution)
-        use_test_data : bool
-            Whether to include test data in the interpolation
         """
         if self.cpt_data is None:
             raise ValueError("No data loaded. Call load_data() first.")
-            
+        
+        # Verifica se la colonna 'predicted_soil' è presente nei dataframe
         if 'predicted_soil' not in self.cpt_data.columns:
-            raise ValueError("No soil predictions. Call predict_soil_types() first.")
+            raise ValueError("No soil predictions in cpt_data. Call predict_soil_types() first.")
         
-        # Select data to use for interpolation
-        data_to_use = self.cpt_data if use_test_data else self.train_data
+        # Verifica nel train_data
+        if 'predicted_soil' not in self.train_data.columns:
+            raise ValueError("No soil predictions in train_data. There's an issue with predict_soil_types().")
         
-        # Create interpolation
-        interp_result = create_3d_interpolation(
+        # Seleziona i dati da utilizzare per l'interpolazione
+        if use_test_data:
+            # Usa tutti i dati
+            data_to_use = self.cpt_data  
+            print(f"Using all data for interpolation ({len(data_to_use)} records)")
+        else:
+            # Usa solo i dati di training
+            data_to_use = self.train_data
+            print(f"Using only training data for interpolation ({len(data_to_use)} records)")
+        
+        # Verifica la presenza delle colonne necessarie
+        required_cols = ['x_coord', 'y_coord', data_to_use.columns[0], 'predicted_soil']
+        for col in required_cols:
+            if col not in data_to_use.columns:
+                raise ValueError(f"Required column '{col}' not found in data_to_use")
+        
+        # Stampa le prime righe per debug
+        print("First 5 rows of data_to_use:")
+        print(data_to_use[required_cols].head())
+        
+        # Crea l'interpolazione
+        from core.interpolator import create_3d_interpolation as interp_func
+        interp_result = interp_func(
             data_to_use,
             resolution=resolution,
             is_train_only=not use_test_data
         )
         
-        # Store the interpolator
+        # Salva l'interpolatore
         self.interpolator = interp_result['interpolator']
         
         return interp_result['grid_data']
@@ -385,32 +435,47 @@ class CPT_3D_SoilModel:
     def create_3d_interpolation_alternative(self, resolution=10, use_test_data=False):
         """
         Create a 3D interpolation of soil types using nearest neighbor method
-        which is more robust than LinearNDInterpolator for problematic datasets
-        
-        Parameters:
-        -----------
-        resolution : int
-            Resolution of the interpolation grid (smaller = higher resolution)
-        use_test_data : bool
-            Whether to include test data in the interpolation
         """
         if self.cpt_data is None:
             raise ValueError("No data loaded. Call load_data() first.")
-            
+        
+        # Verifica se la colonna 'predicted_soil' è presente nei dataframe
         if 'predicted_soil' not in self.cpt_data.columns:
-            raise ValueError("No soil predictions. Call predict_soil_types() first.")
+            raise ValueError("No soil predictions in cpt_data. Call predict_soil_types() first.")
         
-        # Select data to use for interpolation
-        data_to_use = self.cpt_data if use_test_data else self.train_data
+        # Verifica nel train_data
+        if 'predicted_soil' not in self.train_data.columns:
+            raise ValueError("No soil predictions in train_data. There's an issue with predict_soil_types().")
         
-        # Create interpolation
-        interp_result = create_3d_interpolation_alternative(
+        # Seleziona i dati da utilizzare per l'interpolazione
+        if use_test_data:
+            # Usa tutti i dati
+            data_to_use = self.cpt_data  
+            print(f"Using all data for interpolation ({len(data_to_use)} records)")
+        else:
+            # Usa solo i dati di training
+            data_to_use = self.train_data
+            print(f"Using only training data for interpolation ({len(data_to_use)} records)")
+        
+        # Verifica la presenza delle colonne necessarie
+        required_cols = ['x_coord', 'y_coord', data_to_use.columns[0], 'predicted_soil']
+        for col in required_cols:
+            if col not in data_to_use.columns:
+                raise ValueError(f"Required column '{col}' not found in data_to_use")
+        
+        # Stampa le prime righe per debug
+        print("First 5 rows of data_to_use:")
+        print(data_to_use[required_cols].head())
+        
+        # Crea l'interpolazione
+        from core.interpolator import create_3d_interpolation_alternative as interp_func
+        interp_result = interp_func(
             data_to_use,
             resolution=resolution,
             is_train_only=not use_test_data
         )
         
-        # Store the interpolator
+        # Salva l'interpolatore
         self.interpolator = interp_result['interpolator']
         
         return interp_result['grid_data']

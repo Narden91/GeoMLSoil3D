@@ -38,6 +38,20 @@ def train_soil_model(train_data, feature_columns, test_size=0.2, random_state=42
     X = train_data[feature_columns].copy()
     y = train_data['soil []']
     
+    # Analyze class distribution
+    class_distribution = y.value_counts()
+    print("\nClass distribution in training data:")
+    for soil_type, count in class_distribution.items():
+        abbr = SoilTypeManager.get_abbreviation(soil_type)
+        print(f"  Type {soil_type} ({abbr}): {count} records ({count/len(y)*100:.1f}%)")
+    
+    # Calculate class weights inversely proportional to class frequencies
+    class_weights = {cls: len(y) / (len(class_distribution) * count) 
+                    for cls, count in class_distribution.items()}
+    print("\nCalculated class weights:")
+    for cls, weight in class_weights.items():
+        print(f"  Class {cls}: {weight:.2f}")
+    
     # Split data for validation
     X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=test_size, random_state=random_state, stratify=y
@@ -50,21 +64,28 @@ def train_soil_model(train_data, feature_columns, test_size=0.2, random_state=42
     
     # Train model
     if model_type.lower() == 'rf':
-        # Random Forest model
+        # Random Forest model with class balancing
         param_grid = {
-            'n_estimators': [50, 100],
-            'max_depth': [None, 10, 20],
-            'min_samples_split': [2, 5]
+            'n_estimators': [100, 200],  # Più estimator
+            'max_depth': [None, 15, 30],  # Profondità maggiore
+            'min_samples_split': [2, 5],
+            'class_weight': ['balanced', 'balanced_subsample']  # Pesi bilanciati
         }
         
         base_model = RandomForestClassifier(random_state=random_state)
         
     elif model_type.lower() == 'xgb':
-        # XGBoost model
+        # XGBoost model with class balancing
+        # Prepara i pesi campione
+        sample_weights = np.ones(len(y_train))
+        for cls, weight in class_weights.items():
+            sample_weights[y_train == cls] = weight
+            
         param_grid = {
-            'n_estimators': [50, 100],
-            'max_depth': [3, 6, 9],
-            'learning_rate': [0.1, 0.2]
+            'n_estimators': [100, 200],
+            'max_depth': [5, 8, 12],
+            'learning_rate': [0.05, 0.1, 0.2],
+            'scale_pos_weight': [1]  # Usa i pesi campione direttamente
         }
         
         base_model = xgb.XGBClassifier(random_state=random_state)
@@ -73,11 +94,16 @@ def train_soil_model(train_data, feature_columns, test_size=0.2, random_state=42
         raise ValueError(f"Unsupported model type: {model_type}")
     
     # Use grid search to find best parameters
+    print("\nStarting grid search with class balancing...")
     grid_search = GridSearchCV(
-        base_model, param_grid, cv=5, scoring='accuracy', n_jobs=-1
+        base_model, param_grid, cv=5, scoring='balanced_accuracy', n_jobs=-1
     )
     
-    grid_search.fit(X_train_scaled, y_train)
+    if model_type.lower() == 'xgb':
+        # Per XGBoost, usa i pesi campione
+        grid_search.fit(X_train_scaled, y_train, sample_weight=sample_weights)
+    else:
+        grid_search.fit(X_train_scaled, y_train)
     
     # Get best model
     model = grid_search.best_estimator_

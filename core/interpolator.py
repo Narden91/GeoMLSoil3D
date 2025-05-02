@@ -24,8 +24,12 @@ def create_3d_interpolation(data, resolution=10, is_train_only=True):
     dataset_type = "training data only" if is_train_only else "all data (training + testing)"
     print(f"Creating 3D soil interpolation using {dataset_type}...")
     
-    # Get the soil column to use
+    # Get the soil column to use - MODIFICATO per usare 'predicted_soil'
     soil_col = 'predicted_soil'
+    
+    # Verifica che la colonna esista
+    if soil_col not in data.columns:
+        raise ValueError(f"Required column '{soil_col}' not found in data. Make sure predict_soil_types() was called.")
     
     # Extract coordinates and soil types
     points = data[['x_coord', 'y_coord', data.columns[0]]].values  # Using first column as depth
@@ -158,8 +162,12 @@ def create_3d_interpolation_alternative(data, resolution=10, is_train_only=True)
     dataset_type = "training data only" if is_train_only else "all data (training + testing)"
     print(f"Creating 3D soil interpolation using {dataset_type} with nearest neighbor method...")
     
-    # Get the soil column to use
+    # Get the soil column to use - MODIFICATO per usare 'predicted_soil'
     soil_col = 'predicted_soil'
+    
+    # Verifica che la colonna esista
+    if soil_col not in data.columns:
+        raise ValueError(f"Required column '{soil_col}' not found in data. Make sure predict_soil_types() was called.")
     
     # Extract coordinates and soil types
     depth_col = data.columns[0]
