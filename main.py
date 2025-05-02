@@ -1,26 +1,18 @@
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import yaml
 import os
+import sys
 
-# Import local modules
-from cpt_model import CPT_3D_SoilModel
-from utils import debug_cpt_files
-from soil_types import SoilTypeManager
-from visualization import plot_soil_legend
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-
-def load_config(config_path="config.yaml"):
-    """
-    Load configuration from YAML file
-    """
-    if os.path.exists(config_path):
-        with open(config_path, 'r') as file:
-            return yaml.safe_load(file)
-    else:
-        print(f"Warning: Config file {config_path} not found. Using default settings.")
-        return {}
+from core.model import CPT_3D_SoilModel
+from utils.helpers import debug_cpt_files
+from utils.soil_types import SoilTypeManager
+from utils.config import (
+    load_config,
+    save_config,
+    update_config_from_args,
+    create_argument_parser
+)
+from visualization.plots import plot_soil_legend
 
 
 def main(config_path="config.yaml"):
@@ -61,22 +53,30 @@ def main(config_path="config.yaml"):
     if debug_cfg.get('enabled', True):
         debug_cpt_files(data_path)
     
-    # 1. Load data con coordinate generate in modo più robusto
-    data = framework.load_data(
+    # 1. Load data con divisione train/test
+    test_size = soil_classification.get('test_size', 0.2)
+    random_state = soil_classification.get('random_state', 42)
+    
+    train_data, test_data = framework.load_data(
         data_path,
         x_coord_col=data_loading.get('x_coord_col'), 
-        y_coord_col=data_loading.get('y_coord_col')
+        y_coord_col=data_loading.get('y_coord_col'),
+        test_size=test_size,
+        random_state=random_state
     )
     
     # Verifica che ci siano sufficienti coordinate uniche
-    x_unique = framework.cpt_data['x_coord'].nunique()
-    y_unique = framework.cpt_data['y_coord'].nunique()
+    x_unique_train = framework.train_data['x_coord'].nunique()
+    y_unique_train = framework.train_data['y_coord'].nunique()
+    x_unique_test = framework.test_data['x_coord'].nunique()
+    y_unique_test = framework.test_data['y_coord'].nunique()
     
     if debug_cfg.get('verbose', True):
-        print(f"Dataset has {x_unique} unique x-coordinates and {y_unique} unique y-coordinates")
+        print(f"Training dataset has {x_unique_train} unique x-coordinates and {y_unique_train} unique y-coordinates")
+        print(f"Testing dataset has {x_unique_test} unique x-coordinates and {y_unique_test} unique y-coordinates")
     
-    if x_unique < 2 or y_unique < 2:
-        print("WARNING: Not enough unique coordinates for 3D interpolation.")
+    if x_unique_train < 2 or y_unique_train < 2:
+        print("WARNING: Not enough unique coordinates for 3D interpolation in training data.")
         print("Consider adding proper spatial coordinates to your CPT files.")
     
     # 2. Explore data
@@ -91,57 +91,70 @@ def main(config_path="config.yaml"):
     if display.get('show_soil_legend', True):
         plot_soil_legend()
     
-    # 3. Train soil classification model
+    # 3. Train soil classification model con validazione interna
     if soil_classification.get('enabled', True):
         model_type = soil_classification.get('model_type', 'rf')
-        test_size = soil_classification.get('test_size', 0.2)
-        random_state = soil_classification.get('random_state', 42)
+        validation_size = 0.1  # Usa una porzione del training set per validazione interna
         
         model = framework.train_soil_classification_model(
             model_type=model_type,
-            test_size=test_size,
+            test_size=validation_size,
             random_state=random_state
         )
     
-    # 4. Predict soil types for all data points
+    # 4. Valuta sul set di test esterno
+    test_metrics = framework.evaluate_on_test_data()
+    
+    # 5. Predict soil types for all data points
     predictions = framework.predict_soil_types()
     
-    # 5. Create 3D interpolation
+    # 6. Create 3D interpolation
     if interpolation.get('enabled', True):
         resolution = interpolation.get('resolution', 5)
+        use_test_data = display.get('include_test_in_3d', False)
         
         if interpolation.get('try_alternative_first', True):
             try:
                 print("Trying alternative interpolation method...")
-                interpolation_data = framework.create_3d_interpolation_alternative(resolution=resolution)
+                interpolation_data = framework.create_3d_interpolation_alternative(
+                    resolution=resolution,
+                    use_test_data=use_test_data
+                )
             except Exception as e:
                 print(f"Alternative interpolation failed: {e}")
                 print("Falling back to standard interpolation with robustness improvements...")
                 try:
-                    interpolation_data = framework.create_3d_interpolation(resolution=resolution)
+                    interpolation_data = framework.create_3d_interpolation(
+                        resolution=resolution,
+                        use_test_data=use_test_data
+                    )
                 except Exception as e:
                     print(f"3D interpolation failed again: {e}")
                     print("Creating simplified 2D visualization instead...")
                     interpolation_data = None
         else:
             try:
-                interpolation_data = framework.create_3d_interpolation(resolution=resolution)
+                interpolation_data = framework.create_3d_interpolation(
+                    resolution=resolution,
+                    use_test_data=use_test_data
+                )
             except Exception as e:
                 print(f"3D interpolation failed: {e}")
                 interpolation_data = None
     
-        # 6. Visualize 3D model
+        # 7. Visualize 3D model
         if interpolation_data is not None:
             try:
                 framework.visualize_3d_model(
                     interpolation_data, 
-                    interactive=display.get('interactive_visualization', True)
+                    interactive=display.get('interactive_visualization', True),
+                    use_test_data=use_test_data
                 )
             except Exception as e:
                 print(f"3D visualization failed: {e}")
                 print("Consider visualizing individual CPT profiles instead")
     
-    # 7. Save model for future use
+    # 8. Save model for future use
     framework.save_model(model_output)
     
     if display.get('show_soil_abbreviations', True):
@@ -150,14 +163,25 @@ def main(config_path="config.yaml"):
             abbr = SoilTypeManager.get_abbreviation(soil_id)
             desc = SoilTypeManager.get_description(soil_id)
             print(f"  {soil_id}: {abbr} - {desc}")
+    
+    # 9. Stampa statistiche di valutazione
+    print("\nRiepilogo delle performance del modello:")
+    print(f"Accuracy complessiva sul set di test: {test_metrics['overall_accuracy']:.4f}")
+    
+    return framework
 
 
 if __name__ == "__main__":
-    import sys
+    # Parse command line arguments
+    parser = create_argument_parser()
+    args = parser.parse_args()
     
-    # Check if config path is provided as command line argument
-    if len(sys.argv) > 1:
-        config_path = sys.argv[1]
-        main(config_path)
-    else:
-        main()
+    # Load and update config with command line arguments
+    config = load_config(args.config)
+    config = update_config_from_args(config, args)
+    
+    # Save modified config
+    save_config(config, 'config_modified.yaml')
+    
+    # Run with the modified config
+    main('config_modified.yaml')

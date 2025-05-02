@@ -24,6 +24,7 @@ display:
   plot_feature_importance: true  # Visualizza importanza delle caratteristiche
   interactive_visualization: true  # Usa visualizzazione interattiva Plotly
   cross_sections: false  # Mostra sezioni trasversali del modello 3D
+  include_test_in_3d: false  # Includi i dati di test nel modello 3D
 
 # Parametri per caricamento dati
 data_loading:
@@ -37,7 +38,7 @@ data_loading:
 soil_classification:
   enabled: true  # Esegui la classificazione del suolo
   model_type: "rf"  # Tipo di modello: 'rf' (Random Forest) o 'xgb' (XGBoost)
-  test_size: 0.2  # Percentuale dati per test
+  test_size: 0.2  # Percentuale di file CPT per test
   random_state: 42  # Seed per riproducibilità
   compute_missing: true  # Calcola i tipi di suolo mancanti usando qc e Rf
   features:  # Features da utilizzare per la classificazione
