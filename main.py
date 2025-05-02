@@ -1,5 +1,6 @@
 import os
 import sys
+import traceback
 
 # sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -108,88 +109,43 @@ def main(config_path="config.yaml"):
     # 5. Predict soil types for all data points
     predictions = framework.predict_soil_types()
     
-    # 6. Create 3D interpolation
+    # 6. Create and visualize comparative 3D models
     if interpolation.get('enabled', True):
         resolution = interpolation.get('resolution', 5)
-        use_test_data = display.get('include_test_in_3d', False)
         
-        # Assicurati che i dati abbiano la colonna predicted_soil
-        if 'predicted_soil' not in framework.train_data.columns:
-            print("Warning: 'predicted_soil' column not found in train_data. Re-calling predict_soil_types()")
-            framework.predict_soil_types()
-        
-        # Verifica che ci siano sufficienti coordinate uniche
-        x_unique = framework.train_data['x_coord'].nunique()
-        y_unique = framework.train_data['y_coord'].nunique()
-        print(f"Training data has {x_unique} unique x-coordinates and {y_unique} unique y-coordinates")
-        
-        if interpolation.get('try_alternative_first', True):
+        # Create and visualize comparative 3D models
+        try:
+            print("\nCreating comparative visualization of ML predictions vs Real CPT measurements...")
+            framework.visualize_comparative_models(resolution=resolution)
+        except Exception as e:
+            print(f"Comparative 3D visualization failed: {e}")
+            traceback.print_exc()
+            
+            print("\nFalling back to standard single model visualization...")
+            # Create standard interpolation if comparative fails
             try:
-                print("Trying alternative interpolation method...")
-                interpolation_data = framework.create_3d_interpolation_alternative(
-                    resolution=resolution,
-                    use_test_data=use_test_data
-                )
-            except Exception as e:
-                print(f"Alternative interpolation failed: {e}")
-                print("Falling back to standard interpolation with robustness improvements...")
-                try:
+                if interpolation.get('try_alternative_first', True):
+                    interpolation_data = framework.create_3d_interpolation_alternative(
+                        resolution=resolution,
+                        use_test_data=True
+                    )
+                else:
                     interpolation_data = framework.create_3d_interpolation(
                         resolution=resolution,
-                        use_test_data=use_test_data
+                        use_test_data=True
                     )
-                except Exception as e:
-                    print(f"3D interpolation failed again: {e}")
-                    print("Creating simplified 2D visualization instead...")
-                    interpolation_data = None
-        else:
-            try:
-                interpolation_data = framework.create_3d_interpolation(
-                    resolution=resolution,
-                    use_test_data=use_test_data
+                
+                # Visualize standard model
+                framework.visualize_3d_model(
+                    interpolation_data=interpolation_data,
+                    interactive=display.get('interactive_visualization', True),
+                    use_test_data=True
                 )
             except Exception as e:
-                print(f"3D interpolation failed: {e}")
-                interpolation_data = None
-
-    # 7. Visualize 3D model
-    if interpolation_data is not None:
-        try:
-            # Creare un modello 3D dal suolo reale (se disponibile)
-            real_interpolation_data = None
-            if 'soil []' in framework.cpt_data.columns:
-                try:
-                    print("Creating 3D model from real soil data...")
-                    if interpolation.get('try_alternative_first', True):
-                        real_interpolation_data = framework.create_3d_interpolation_alternative(
-                            resolution=resolution,
-                            use_test_data=use_test_data,
-                            soil_col='soil []'
-                        )
-                    else:
-                        real_interpolation_data = framework.create_3d_interpolation(
-                            resolution=resolution,
-                            use_test_data=use_test_data,
-                            soil_col='soil []'
-                        )
-                except Exception as e:
-                    print(f"Failed to create real soil model: {e}")
-                    real_interpolation_data = None
-            
-            # Visualizzare entrambi i modelli
-            framework.visualize_3d_model(
-                pred_interpolation_data=interpolation_data,
-                real_interpolation_data=real_interpolation_data,
-                interactive=display.get('interactive_visualization', True),
-                use_test_data=use_test_data
-            )
-        except Exception as e:
-            print(f"3D visualization failed: {e}")
-            import traceback
-            traceback.print_exc()
-            print("Consider visualizing individual CPT profiles instead")
+                print(f"Standard 3D visualization also failed: {e}")
+                print("Consider visualizing individual CPT profiles instead")
     
-    # 8. Save model for future use
+    # 7. Save model for future use
     framework.save_model(model_output)
     
     if display.get('show_soil_abbreviations', True):
@@ -199,7 +155,7 @@ def main(config_path="config.yaml"):
             desc = SoilTypeManager.get_description(soil_id)
             print(f"  {soil_id}: {abbr} - {desc}")
     
-    # 9. Stampa statistiche di valutazione
+    # 8. Stampa statistiche di valutazione
     print("\nRiepilogo delle performance del modello:")
     print(f"Accuracy complessiva sul set di test: {test_metrics['overall_accuracy']:.4f}")
     
