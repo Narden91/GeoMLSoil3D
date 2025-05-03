@@ -3,7 +3,7 @@ from scipy.interpolate import LinearNDInterpolator, griddata
 from scipy.spatial import cKDTree
 
 
-def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='predicted_soil'):
+def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='predicted_soil', method='linear'):
     """
     Create a 3D interpolation of soil types from discrete CPT points
     
@@ -17,6 +17,8 @@ def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='p
         Flag indicating if only training data is being used
     soil_col : str
         Column name containing soil types to interpolate
+    method : str
+        Interpolation method ('linear' or 'nearest')
         
     Returns:
     --------
@@ -31,102 +33,38 @@ def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='p
         raise ValueError(f"Required column '{soil_col}' not found in data.")
     
     # Extract coordinates and soil types
-    points = data[['x_coord', 'y_coord', data.columns[0]]].values  # Using first column as depth
+    depth_col = data.columns[0]
+    coords_df = data[['x_coord', 'y_coord', depth_col]].copy()
     values = data[soil_col].values
     
-    # Check if all x coordinates are the same
-    x_coords = data['x_coord'].unique()
-    y_coords = data['y_coord'].unique()
+    # Check coordinate diversity
+    x_unique = len(coords_df['x_coord'].unique())
+    y_unique = len(coords_df['y_coord'].unique())
+    print(f"Dataset has {x_unique} unique x-coordinates and {y_unique} unique y-coordinates")
     
-    print(f"Unique x coordinates: {len(x_coords)}")
-    print(f"Unique y coordinates: {len(y_coords)}")
+    # Get bounds with sanity checks
+    x_min, x_max, y_min, y_max, z_min, z_max = _get_interpolation_bounds(coords_df, depth_col)
     
-    # If we have a degenerate case (all points have same x or y), we need to add some jitter
-    if len(x_coords) < 2 or len(y_coords) < 2:
-        print("WARNING: Not enough unique coordinates for interpolation. Adding artificial jitter...")
-        
-        # Create a copy to avoid modifying original data
-        jittered_points = points.copy()
-        
-        # Add small random values to make coordinates unique
-        # Scale jitter based on the depth range to maintain reasonable proportions
-        depth_range = data[data.columns[0]].max() - data[data.columns[0]].min()
-        jitter_scale = depth_range * 0.01  # 1% of depth range
-        
-        if len(x_coords) < 2:
-            jittered_points[:, 0] += np.random.uniform(-jitter_scale, jitter_scale, size=jittered_points.shape[0])
-            print(f"Added jitter to x coordinates with scale {jitter_scale}")
-            
-        if len(y_coords) < 2:
-            jittered_points[:, 1] += np.random.uniform(-jitter_scale, jitter_scale, size=jittered_points.shape[0])
-            print(f"Added jitter to y coordinates with scale {jitter_scale}")
-        
-        # Replace original points with jittered points
-        points = jittered_points
-    
-    # Try to create the interpolator - first with LinearNDInterpolator, but fallback to griddata if it fails
-    try:
-        print("Attempting to create LinearNDInterpolator...")
-        interpolator = LinearNDInterpolator(points, values, fill_value=-1)
-        interpolator_type = "LinearNDInterpolator"
-    except Exception as e:
-        print(f"LinearNDInterpolator failed: {e}")
-        print("Falling back to griddata interpolator...")
-        
-        # griddata is more robust but slower
-        def griddata_interpolator(pts):
-            return griddata(points, values, pts, method='linear', fill_value=-1)
-        
-        interpolator = griddata_interpolator
-        interpolator_type = "griddata"
-    
-    print(f"Using {interpolator_type} for interpolation")
-    
-    # Create a grid for interpolation
-    x_min, x_max = points[:, 0].min(), points[:, 0].max()
-    y_min, y_max = points[:, 1].min(), points[:, 1].max()
-    z_min, z_max = points[:, 2].min(), points[:, 2].max()
-    
-    # Add some margin
-    margin = 5  # meters
-    x_min -= margin
-    x_max += margin
-    y_min -= margin
-    y_max += margin
-    
-    # Ensure we have a reasonable range even with jittered values
-    if x_max - x_min < resolution:
-        center = (x_max + x_min) / 2
-        x_min = center - resolution
-        x_max = center + resolution
-    
-    if y_max - y_min < resolution:
-        center = (y_max + y_min) / 2
-        y_min = center - resolution
-        y_max = center + resolution
-    
-    # Create grid
-    x_range = np.arange(x_min, x_max, resolution)
-    y_range = np.arange(y_min, y_max, resolution)
-    z_range = np.arange(z_min, z_max, resolution/2)  # Higher vertical resolution
+    # Create grid for interpolation
+    x_range, y_range, z_range = _create_grid_ranges(x_min, x_max, y_min, y_max, z_min, z_max, resolution)
+    print(f"Created grid with dimensions: {len(x_range)}x{len(y_range)}x{len(z_range)}")
     
     # Create meshgrid
     X, Y, Z = np.meshgrid(x_range, y_range, z_range)
     
-    # Flatten the grid
-    grid_points = np.vstack([X.flatten(), Y.flatten(), Z.flatten()]).T
-    
-    # Interpolate soil types
-    print(f"Interpolating {len(grid_points)} points...")
-    
-    # Handle different interpolator types
-    if interpolator_type == "LinearNDInterpolator":
-        grid_values = interpolator(grid_points)
-    else:
-        grid_values = interpolator(grid_points)
-    
-    # Reshape back to grid
-    grid_values = grid_values.reshape(X.shape)
+    # Create interpolator and grid values based on method
+    if method.lower() == 'nearest':
+        grid_values, interpolator = _create_nearest_interpolation(
+            coords_df[['x_coord', 'y_coord', depth_col]].values, 
+            values, 
+            X, Y, Z
+        )
+    else:  # Default to 'linear'
+        grid_values, interpolator = _create_linear_interpolation(
+            coords_df[['x_coord', 'y_coord', depth_col]].values, 
+            values, 
+            X, Y, Z
+        )
     
     return {
         'grid_data': {
@@ -139,47 +77,24 @@ def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='p
     }
 
 
-def create_3d_interpolation_alternative(data, resolution=10, is_train_only=True, soil_col='predicted_soil'):
+def _get_interpolation_bounds(coords_df, depth_col, margin=5):
     """
-    Create a 3D interpolation of soil types using nearest neighbor method
-    which is more robust than LinearNDInterpolator for problematic datasets
+    Calculate bounds for interpolation with margin and sanity checks
     
     Parameters:
     -----------
-    data : pandas.DataFrame
-        DataFrame containing the CPT data with predicted soil types
-    resolution : int
-        Resolution of the interpolation grid (smaller = higher resolution)
-    is_train_only : bool
-        Flag indicating if only training data is being used
+    coords_df : pandas.DataFrame
+        DataFrame with coordinate columns
+    depth_col : str
+        Name of depth column
+    margin : float
+        Margin to add around the bounds
         
     Returns:
     --------
-    dict
-        Dictionary containing interpolation results including grid data and interpolator
+    x_min, x_max, y_min, y_max, z_min, z_max : tuple
+        Bounds for interpolation
     """
-    dataset_type = "training data only" if is_train_only else "all data (training + testing)"
-    print(f"Creating 3D soil interpolation using {dataset_type} with '{soil_col}' column...")
-    
-    # Get the soil column to use - MODIFICATO per usare 'predicted_soil'
-    if soil_col not in data.columns:
-        raise ValueError(f"Required column '{soil_col}' not found in data.")
-    
-    # Verifica che la colonna esista
-    if soil_col not in data.columns:
-        raise ValueError(f"Required column '{soil_col}' not found in data. Make sure predict_soil_types() was called.")
-    
-    # Extract coordinates and soil types
-    depth_col = data.columns[0]
-    coords_df = data[['x_coord', 'y_coord', depth_col]].copy()
-    values = data[soil_col].values
-    
-    # Check coordinate diversity
-    x_unique = len(coords_df['x_coord'].unique())
-    y_unique = len(coords_df['y_coord'].unique())
-    print(f"Dataset has {x_unique} unique x-coordinates and {y_unique} unique y-coordinates")
-    
-    # Create grid for interpolation
     x_min, x_max = coords_df['x_coord'].min(), coords_df['x_coord'].max()
     y_min, y_max = coords_df['y_coord'].min(), coords_df['y_coord'].max()
     z_min, z_max = coords_df[depth_col].min(), coords_df[depth_col].max()
@@ -197,27 +112,112 @@ def create_3d_interpolation_alternative(data, resolution=10, is_train_only=True,
         y_min -= range_value / 2
         y_max += range_value / 2
     
-    # Add some margin
-    margin = 5  # meters
+    # Add margin
     x_min -= margin
     x_max += margin
     y_min -= margin
     y_max += margin
     
-    # Create grid with specified resolution
+    return x_min, x_max, y_min, y_max, z_min, z_max
+
+
+def _create_grid_ranges(x_min, x_max, y_min, y_max, z_min, z_max, resolution):
+    """
+    Create grid ranges for interpolation
+    
+    Parameters:
+    -----------
+    x_min, x_max, y_min, y_max, z_min, z_max : float
+        Bounds for interpolation
+    resolution : int
+        Resolution of the grid
+        
+    Returns:
+    --------
+    x_range, y_range, z_range : tuple
+        Grid ranges for interpolation
+    """
     x_range = np.linspace(x_min, x_max, int((x_max - x_min) / resolution) + 1)
     y_range = np.linspace(y_min, y_max, int((y_max - y_min) / resolution) + 1)
     z_range = np.linspace(z_min, z_max, int((z_max - z_min) / (resolution/2)) + 1)  # Higher vertical resolution
     
-    print(f"Created grid with dimensions: {len(x_range)}x{len(y_range)}x{len(z_range)}")
+    return x_range, y_range, z_range
+
+
+def _create_linear_interpolation(points, values, X, Y, Z):
+    """
+    Create linear interpolation
     
-    # Create meshgrid
-    X, Y, Z = np.meshgrid(x_range, y_range, z_range)
+    Parameters:
+    -----------
+    points : ndarray
+        Points to interpolate from (x, y, z)
+    values : ndarray
+        Values at the points
+    X, Y, Z : ndarray
+        Meshgrid for interpolation
+        
+    Returns:
+    --------
+    grid_values, interpolator : tuple
+        Interpolated values and interpolator function
+    """
+    try:
+        print("Attempting to create LinearNDInterpolator...")
+        interpolator = LinearNDInterpolator(points, values, fill_value=-1)
+        interpolator_type = "LinearNDInterpolator"
+    except Exception as e:
+        print(f"LinearNDInterpolator failed: {e}")
+        print("Falling back to griddata interpolator...")
+        
+        # griddata is more robust but slower
+        def griddata_interpolator(pts):
+            return griddata(points, values, pts, method='linear', fill_value=-1)
+        
+        interpolator = griddata_interpolator
+        interpolator_type = "griddata"
     
+    print(f"Using {interpolator_type} for interpolation")
+    
+    # Flatten the grid for interpolation
+    grid_points = np.vstack([X.flatten(), Y.flatten(), Z.flatten()]).T
+    
+    # Interpolate soil types
+    print(f"Interpolating {len(grid_points)} points...")
+    
+    # Handle different interpolator types
+    if interpolator_type == "LinearNDInterpolator":
+        grid_values = interpolator(grid_points)
+    else:
+        grid_values = interpolator(grid_points)
+    
+    # Reshape back to grid
+    grid_values = grid_values.reshape(X.shape)
+    
+    return grid_values, interpolator
+
+
+def _create_nearest_interpolation(points, values, X, Y, Z):
+    """
+    Create nearest neighbor interpolation
+    
+    Parameters:
+    -----------
+    points : ndarray
+        Points to interpolate from (x, y, z)
+    values : ndarray
+        Values at the points
+    X, Y, Z : ndarray
+        Meshgrid for interpolation
+        
+    Returns:
+    --------
+    grid_values, interpolator : tuple
+        Interpolated values and interpolator function
+    """
     # Prepare for nearest neighbor interpolation
     # Create KD-tree from the source points
-    source_points = coords_df[['x_coord', 'y_coord', depth_col]].values
-    tree = cKDTree(source_points)
+    tree = cKDTree(points)
     
     # Prepare target points (flatten the grid)
     target_points = np.vstack([X.flatten(), Y.flatten(), Z.flatten()]).T
@@ -239,12 +239,29 @@ def create_3d_interpolation_alternative(data, resolution=10, is_train_only=True,
         _, idx = tree.query(points, k=1)
         return values[idx]
     
-    return {
-        'grid_data': {
-            'X': X,
-            'Y': Y, 
-            'Z': Z,
-            'values': grid_values
-        },
-        'interpolator': nn_interpolator
-    }
+    return grid_values, nn_interpolator
+
+
+# Funzione wrapper per compatibilità con il codice esistente
+def create_3d_interpolation_alternative(data, resolution=10, is_train_only=True, soil_col='predicted_soil'):
+    """
+    Create a 3D interpolation of soil types using nearest neighbor method
+    which is more robust than LinearNDInterpolator for problematic datasets
+    
+    Parameters:
+    -----------
+    data : pandas.DataFrame
+        DataFrame containing the CPT data with predicted soil types
+    resolution : int
+        Resolution of the interpolation grid (smaller = higher resolution)
+    is_train_only : bool
+        Flag indicating if only training data is being used
+    soil_col : str
+        Column name containing soil types to interpolate
+        
+    Returns:
+    --------
+    dict
+        Dictionary containing interpolation results including grid data and interpolator
+    """
+    return create_3d_interpolation(data, resolution, is_train_only, soil_col, method='nearest')

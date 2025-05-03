@@ -75,47 +75,66 @@ class SoilTypeManager:
         int
             Codice del tipo di suolo
         """
-        # Implementazione della classificazione sulla base del grafico fornito
-        # Queste sono regole semplificate basate sull'immagine
+        # Implementazione della classificazione basata sul rapporto tra qc e Rf
+        soil_type = cls._identify_soil_type(qc, rf)
         
+        # Valore predefinito: classificare come tipo 4 (limi) se nessuna regola corrisponde
+        return soil_type if soil_type else 4
+    
+    @classmethod
+    def _identify_soil_type(cls, qc, rf):
+        """
+        Identifica il tipo di suolo in base alle regole di classificazione
+        
+        Parameters:
+        -----------
+        qc : float
+            Resistenza del cono in MPa
+        rf : float
+            Rapporto di attrito in %
+            
+        Returns:
+        --------
+        int or None
+            Codice del tipo di suolo o None se nessuna regola corrisponde
+        """
         # Regola 1: Terreno sensitivo a grana fine
-        if (rf < 1.0 and qc < 2.0):
+        if rf < 1.0 and qc < 2.0:
             return 1
         
         # Regola 2: Terreno organico, torba
-        if (rf > 1.5 and qc < 1.0):
+        if rf > 1.5 and qc < 1.0:
             return 2
             
         # Regola 3: Argille
-        if (rf > 4.0 and qc < 1.5):
+        if rf > 4.0 and qc < 1.5:
             return 3
             
         # Regola 4: Limi
-        if (3.0 < rf < 5.0 and 1.0 < qc < 3.0):
+        if 3.0 < rf < 5.0 and 1.0 < qc < 3.0:
             return 4
             
         # Regola 5: Sabbie limose
-        if (2.0 < rf < 4.0 and 2.0 < qc < 8.0):
+        if 2.0 < rf < 4.0 and 2.0 < qc < 8.0:
             return 5
             
         # Regola 6: Sabbie pulite
-        if (1.0 < rf < 2.0 and 5.0 < qc < 20.0):
+        if 1.0 < rf < 2.0 and 5.0 < qc < 20.0:
             return 6
             
         # Regola 7: Sabbie ghiaiose
-        if (0.5 < rf < 1.5 and qc > 15.0):
+        if 0.5 < rf < 1.5 and qc > 15.0:
             return 7
             
         # Regola 8: Sabbie dense
-        if (1.5 < rf < 3.0 and qc > 10.0):
+        if 1.5 < rf < 3.0 and qc > 10.0:
             return 8
             
         # Regola 9: Materiali fini granulari duri
-        if (rf > 3.0 and qc > 10.0):
+        if rf > 3.0 and qc > 10.0:
             return 9
             
-        # Valore predefinito: classificare come tipo 4 (limi)
-        return 4
+        return None
     
     @classmethod
     def get_all_types(cls):

@@ -39,18 +39,10 @@ def train_soil_model(train_data, feature_columns, test_size=0.2, random_state=42
     y = train_data['soil []']
     
     # Analyze class distribution
-    class_distribution = y.value_counts()
-    print("\nClass distribution in training data:")
-    for soil_type, count in class_distribution.items():
-        abbr = SoilTypeManager.get_abbreviation(soil_type)
-        print(f"  Type {soil_type} ({abbr}): {count} records ({count/len(y)*100:.1f}%)")
+    _analyze_class_distribution(y)
     
     # Calculate class weights inversely proportional to class frequencies
-    class_weights = {cls: len(y) / (len(class_distribution) * count) 
-                    for cls, count in class_distribution.items()}
-    print("\nCalculated class weights:")
-    for cls, weight in class_weights.items():
-        print(f"  Class {cls}: {weight:.2f}")
+    class_weights = _calculate_class_weights(y)
     
     # Split data for validation
     X_train, X_val, y_train, y_val = train_test_split(
@@ -62,7 +54,86 @@ def train_soil_model(train_data, feature_columns, test_size=0.2, random_state=42
     X_train_scaled = scaler.fit_transform(X_train)
     X_val_scaled = scaler.transform(X_val)
     
-    # Train model
+    # Create and configure model based on type
+    model, param_grid, sample_weights = _create_model_config(
+        model_type, y_train, class_weights, random_state
+    )
+    
+    # Train model with grid search
+    model = _train_model_with_grid_search(
+        model, param_grid, X_train_scaled, y_train, 
+        sample_weights, model_type
+    )
+    
+    # Evaluate model
+    results = _evaluate_model(model, X_val_scaled, y_val)
+    
+    return model, scaler, results
+
+
+def _analyze_class_distribution(y):
+    """
+    Analyze and print the class distribution
+    
+    Parameters:
+    -----------
+    y : Series
+        Target variable
+    """
+    class_distribution = y.value_counts()
+    print("\nClass distribution in training data:")
+    for soil_type, count in class_distribution.items():
+        abbr = SoilTypeManager.get_abbreviation(soil_type)
+        print(f"  Type {soil_type} ({abbr}): {count} records ({count/len(y)*100:.1f}%)")
+
+
+def _calculate_class_weights(y):
+    """
+    Calculate class weights inversely proportional to class frequencies
+    
+    Parameters:
+    -----------
+    y : Series
+        Target variable
+        
+    Returns:
+    --------
+    dict
+        Dictionary of class weights
+    """
+    class_distribution = y.value_counts()
+    class_weights = {cls: len(y) / (len(class_distribution) * count) 
+                    for cls, count in class_distribution.items()}
+    
+    print("\nCalculated class weights:")
+    for cls, weight in class_weights.items():
+        print(f"  Class {cls}: {weight:.2f}")
+    
+    return class_weights
+
+
+def _create_model_config(model_type, y_train, class_weights, random_state):
+    """
+    Create model, parameter grid, and sample weights based on model type
+    
+    Parameters:
+    -----------
+    model_type : str
+        Type of model ('rf' or 'xgb')
+    y_train : Series
+        Training target variable
+    class_weights : dict
+        Dictionary of class weights
+    random_state : int
+        Random seed
+        
+    Returns:
+    --------
+    model, param_grid, sample_weights : tuple
+        Model, parameter grid, and sample weights
+    """
+    sample_weights = None
+    
     if model_type.lower() == 'rf':
         # Random Forest model with class balancing
         param_grid = {
@@ -72,7 +143,7 @@ def train_soil_model(train_data, feature_columns, test_size=0.2, random_state=42
             'class_weight': ['balanced', 'balanced_subsample']  # Pesi bilanciati
         }
         
-        base_model = RandomForestClassifier(random_state=random_state)
+        model = RandomForestClassifier(random_state=random_state)
         
     elif model_type.lower() == 'xgb':
         # XGBoost model with class balancing
@@ -88,29 +159,79 @@ def train_soil_model(train_data, feature_columns, test_size=0.2, random_state=42
             'scale_pos_weight': [1]  # Usa i pesi campione direttamente
         }
         
-        base_model = xgb.XGBClassifier(random_state=random_state)
+        model = xgb.XGBClassifier(random_state=random_state)
         
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
     
-    # Use grid search to find best parameters
+    return model, param_grid, sample_weights
+
+
+def _train_model_with_grid_search(model, param_grid, X_train, y_train, sample_weights, model_type):
+    """
+    Train model using grid search
+    
+    Parameters:
+    -----------
+    model : sklearn model
+        Base model
+    param_grid : dict
+        Parameter grid for grid search
+    X_train : array
+        Training features
+    y_train : array
+        Training targets
+    sample_weights : array
+        Sample weights (can be None)
+    model_type : str
+        Model type
+        
+    Returns:
+    --------
+    model : sklearn model
+        Trained model
+    """
     print("\nStarting grid search with class balancing...")
     grid_search = GridSearchCV(
-        base_model, param_grid, cv=5, scoring='balanced_accuracy', n_jobs=-1
+        model, param_grid, cv=5, scoring='balanced_accuracy', n_jobs=-1
     )
     
-    if model_type.lower() == 'xgb':
+    if model_type.lower() == 'xgb' and sample_weights is not None:
         # Per XGBoost, usa i pesi campione
-        grid_search.fit(X_train_scaled, y_train, sample_weight=sample_weights)
+        grid_search.fit(X_train, y_train, sample_weight=sample_weights)
     else:
-        grid_search.fit(X_train_scaled, y_train)
+        grid_search.fit(X_train, y_train)
     
-    # Get best model
-    model = grid_search.best_estimator_
+    print(f"Best parameters: {grid_search.best_params_}")
     
-    # Evaluate model on validation set
-    y_pred_val = model.predict(X_val_scaled)
-    val_accuracy = model.score(X_val_scaled, y_val)
+    return grid_search.best_estimator_
+
+
+def _evaluate_model(model, X_val, y_val):
+    """
+    Evaluate model on validation set
+    
+    Parameters:
+    -----------
+    model : sklearn model
+        Trained model
+    X_val : array
+        Validation features
+    y_val : array
+        Validation targets
+        
+    Returns:
+    --------
+    dict
+        Dictionary with evaluation results
+    """
+    # Predict on validation set
+    y_pred_val = model.predict(X_val)
+    
+    # Calculate accuracy
+    val_accuracy = model.score(X_val, y_val)
+    
+    # Generate classification report
     val_report = classification_report(y_val, y_pred_val)
     
     # Collect results
@@ -119,10 +240,10 @@ def train_soil_model(train_data, feature_columns, test_size=0.2, random_state=42
         'report': val_report,
         'y_pred': y_pred_val,
         'y_true': y_val,
-        'best_params': grid_search.best_params_
+        'best_params': model.get_params()
     }
     
-    return model, scaler, results
+    return results
 
 
 def predict_soil_types(data, model, scaler, feature_columns):
