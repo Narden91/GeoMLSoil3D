@@ -141,53 +141,40 @@ def _load_and_preprocess_file(file_path, index, x_coord_col=None, y_coord_col=No
 
 def _handle_coordinates(df, index, x_coord_col=None, y_coord_col=None, file_name=""):
     """
-    Handle coordinate columns in the dataframe
-    
-    Parameters:
-    -----------
-    df : DataFrame
-        Input dataframe
-    index : int
-        Index of the file in the sequence
-    x_coord_col : str, optional
-        Column name containing X coordinates
-    y_coord_col : str, optional
-        Column name containing Y coordinates
-    file_name : str
-        Name of the file for logging
-        
-    Returns:
-    --------
-    DataFrame
-        Dataframe with proper coordinates
+    Handle coordinate columns in the dataframe.
+    Assigns a unique (x, y) coordinate pair to all points within the same CPT file
+    if coordinates are not found in the source file.
     """
     # If X and Y coordinates are not in the data, we need to add them
-    if (x_coord_col is None or y_coord_col is None or 
+    if (x_coord_col is None or y_coord_col is None or
         x_coord_col not in df.columns or y_coord_col not in df.columns):
-        
-        print(f"No coordinates for {file_name}, generating spatial coordinates")
-        
-        # Generate coordinates using spiral pattern
-        x, y = generate_spiral_coords(index, 100)  # Assume max 100 files as default
-        
-        # Add some small variations for each point within the same CPT
-        # This is important to avoid the "same coordinate" problem
-        point_count = len(df)
-        random_state = np.random.RandomState(index)  # Use file index as seed for reproducibility
-        
-        # Generate small variations (max 0.5 meter in each direction)
-        x_variations = random_state.uniform(-0.5, 0.5, size=point_count)
-        y_variations = random_state.uniform(-0.5, 0.5, size=point_count)
-        
-        # Create artificial X and Y coordinates with variations
-        df['x_coord'] = x + x_variations
-        df['y_coord'] = y + y_variations
-        
-        print(f"Generated coordinates centered at ({x:.2f}, {y:.2f}) with variations")
+
+        print(f"No coordinates found for {file_name}. Generating unique spatial coordinates for this CPT.")
+
+        # Generate a single, unique (x, y) coordinate pair for the entire CPT file
+        # using a spiral pattern based on the file index.
+        # We assume a maximum of 100 files for the spiral generation density,
+        # adjust if necessary based on expected dataset size.
+        num_files_for_spiral = 100 # Or pass the actual total number of files if available
+        x, y = generate_spiral_coords(index, num_files_for_spiral)
+
+        # Assign the *same* generated (x, y) coordinate to all rows in this DataFrame (CPT file).
+        # Do NOT add per-point variations/jitter, as a CPT sounding occurs at a single (x, y) location.
+        df['x_coord'] = x
+        df['y_coord'] = y
+
+        print(f"Assigned generated coordinates ({x:.2f}, {y:.2f}) to all points in {file_name}")
+
     else:
-        # Rename to standard column names
+        # Coordinates exist in the file, ensure they use the standard names.
+        print(f"Using coordinates from columns '{x_coord_col}' and '{y_coord_col}' for {file_name}.")
         df.rename(columns={x_coord_col: 'x_coord', y_coord_col: 'y_coord'}, inplace=True)
-    
+
+        # Optional: Check if coordinates are constant within the file, as expected for a CPT
+        if df['x_coord'].nunique() > 1 or df['y_coord'].nunique() > 1:
+            print(f"WARNING: Multiple (x, y) coordinates found within the single CPT file {file_name}. "
+                  f"Using the provided coordinates, but this might indicate data issues.")
+
     return df
 
 

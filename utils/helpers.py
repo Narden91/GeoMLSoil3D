@@ -24,13 +24,13 @@ def generate_spiral_coords(index, num_files):
         X and Y coordinates
     """
     # Parameters for spiral
-    a = 10  # Controls spacing between rings
+    a = 100  # Controls spacing between rings
     b = 1   # Controls how tightly wound the spiral is
     
     # Convert index to angle and radius
     theta = b * index * 2 * np.pi / num_files
     r = a * theta / (2 * np.pi)
-    
+
     # Convert to Cartesian coordinates
     x = r * np.cos(theta)
     y = r * np.sin(theta)
