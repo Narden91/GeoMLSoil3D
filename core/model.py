@@ -34,43 +34,63 @@ class CPT_3D_SoilModel:
         self.interpolator = None
         self.soil_manager = SoilTypeManager()
     
-    def load_data(self, file_pattern, x_coord_col=None, y_coord_col=None, test_size=0.2, random_state=42):
+    def load_data(self, file_pattern, x_coord_col=None, y_coord_col=None, test_size=0.2, random_state=42,
+             auto_detect=True, encoding='utf-8', separator=',', header=0, depth_col=None):
         """
-        Load CPT data from multiple files and combine with spatial coordinates.
-        Split the data between training and testing based on CPT files.
+        Carica dati CPT da più file e li combina con coordinate spaziali.
+        Divide i dati tra training e testing basandosi sui file CPT.
         
         Parameters:
         -----------
         file_pattern : str
-            File pattern to match CPT files (e.g., "data/CPT_*.csv")
+            Pattern per trovare i file CPT (es. "data/CPT_*.csv")
         x_coord_col : str, optional
-            Column name containing X coordinates (Easting)
+            Nome della colonna contenente le coordinate X
         y_coord_col : str, optional
-            Column name containing Y coordinates (Northing)
+            Nome della colonna contenente le coordinate Y
         test_size : float
-            Proportion of CPT files to use for testing (default: 0.2)
+            Proporzione di file CPT da usare per il testing (default: 0.2)
         random_state : int
-            Random seed for reproducibility
+            Seed per riproducibilità
+        auto_detect : bool
+            Rileva automaticamente il formato CSV
+        encoding : str
+            Codifica del file (se auto_detect=False)
+        separator : str
+            Separatore CSV (se auto_detect=False)
+        header : int
+            Riga da usare come intestazione (se auto_detect=False)
+        depth_col : str, optional
+            Nome della colonna contenente i valori di profondità
         """
-        print(f"Loading data from pattern: {file_pattern}")
+        print(f"Caricamento dati dal pattern: {file_pattern}")
         
-        # Split files into train and test
+        # Dividi i file in train e test
         train_files, test_files = split_cpt_files(file_pattern, test_size, random_state)
         
-        print(f"Split data: {len(train_files)} files for training, {len(test_files)} files for testing")
+        print(f"Dati divisi: {len(train_files)} file per training, {len(test_files)} file per testing")
         
-        # Load and combine data
-        train_data = load_cpt_files(train_files, x_coord_col, y_coord_col, is_train=True)
-        test_data = load_cpt_files(test_files, x_coord_col, y_coord_col, is_train=False)
+        # Carica e combina i dati
+        train_data = load_cpt_files(
+            train_files, x_coord_col, y_coord_col, is_train=True,
+            auto_detect=auto_detect, encoding=encoding, separator=separator,
+            header=header, depth_col=depth_col
+        )
         
-        # Store the data
+        test_data = load_cpt_files(
+            test_files, x_coord_col, y_coord_col, is_train=False,
+            auto_detect=auto_detect, encoding=encoding, separator=separator,
+            header=header, depth_col=depth_col
+        )
+        
+        # Memorizza i dati
         self.train_data = train_data
         self.test_data = test_data
         self.cpt_data = pd.concat([train_data, test_data], ignore_index=True)
         
-        print(f"Loaded {len(train_data)} training records and {len(test_data)} testing records")
+        print(f"Caricati {len(train_data)} record di training e {len(test_data)} record di testing")
         
-        # Initialize soil types and colors if possible
+        # Inizializza tipi di suolo e colori se possibile
         self._initialize_soil_types_and_colors()
         
         return self.train_data, self.test_data
