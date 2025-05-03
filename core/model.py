@@ -550,16 +550,22 @@ class CPT_3D_SoilModel:
     
     def visualize_comparative_models(self, resolution=10):
         """
-        Create and visualize both ML predicted and real CPT measurement models
+        Crea e visualizza due modelli 3D del suolo:
+        1. Un modello basato sulle predizioni del modello ML addestrato sui dati CPT
+        2. Un modello geotecnico ottenuto dall'interpolazione diretta dei dati CPT reali
+        
+        Questa funzione è utile per confrontare le predizioni del modello ML con i dati reali
+        e valutare l'accuratezza del modello ML in un contesto 3D.
         
         Parameters:
         -----------
         resolution : int
-            Resolution of the interpolation grid
-            
+            Risoluzione della griglia di interpolazione (valore più piccolo = maggiore risoluzione)
+                
         Returns:
         --------
         Figure object from plotting library
+            Figura interattiva con i due modelli affiancati
         """
         if self.cpt_data is None:
             raise ValueError("No data loaded. Call load_data() first.")
@@ -570,14 +576,21 @@ class CPT_3D_SoilModel:
         if 'predicted_soil' not in self.cpt_data.columns:
             raise ValueError("No predicted soil types. Call predict_soil_types() first.")
         
-        # Create real soil model
+        print("\nCreazione di due modelli 3D per confronto:")
+        print("1. Modello basato su predizioni ML")
+        print("2. Modello geotecnico basato su dati CPT reali")
+        
+        # Create real soil model (geotechnical model)
+        print("\nCreando modello geotecnico dai dati CPT reali...")
         real_model_data = self._create_soil_model('soil []', resolution, True)
         
         # Create ML soil model
+        print("\nCreando modello basato sulle predizioni ML...")
         ml_model_data = self._create_soil_model('predicted_soil', resolution, True)
         
         # Visualize comparison
         if real_model_data and ml_model_data:
+            print("\nVisualizzazione comparativa dei due modelli 3D...")
             return visualize_compare_3d_models(
                 self.cpt_data,
                 ml_model_data, 

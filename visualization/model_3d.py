@@ -394,7 +394,7 @@ def visualize_compare_3d_models(cpt_data, ml_model_data, real_model_data,
     fig = make_subplots(
         rows=1, cols=2,
         specs=[[{'type': 'scene'}, {'type': 'scene'}]],
-        subplot_titles=('ML Predicted Soil Model', 'Actual CPT Measurements Model'),
+        subplot_titles=('Modello 3D basato su predizioni ML', 'Modello 3D geotecnico (dati CPT reali)'),
         horizontal_spacing=0.05  # Reduce spacing between plots
     )
     
@@ -404,14 +404,14 @@ def visualize_compare_3d_models(cpt_data, ml_model_data, real_model_data,
     # Add ML model to first subplot
     _add_model_to_subplot(
         fig, X_ml, Y_ml, Z_ml, values_ml, soil_types, 
-        colorscale, tickvals, ticktext, 0.45, 'ML Predicted Soil',
+        colorscale, tickvals, ticktext, 0.45, 'Modello ML',
         1, 1
     )
     
     # Add real model to second subplot
     _add_model_to_subplot(
         fig, X_real, Y_real, Z_real, values_real, soil_types, 
-        colorscale, tickvals, ticktext, 0.95, 'Actual CPT Measurements',
+        colorscale, tickvals, ticktext, 0.95, 'Modello Geotecnico',
         1, 2
     )
     
@@ -423,7 +423,7 @@ def visualize_compare_3d_models(cpt_data, ml_model_data, real_model_data,
         fig.update_scenes(
             xaxis_title='X Coordinate (m)',
             yaxis_title='Y Coordinate (m)',
-            zaxis_title='Depth (m)',
+            zaxis_title='Profondità (m)',
             aspectmode='manual',
             aspectratio=dict(x=1, y=1, z=0.5),  # Vertical exaggeration
             zaxis=dict(autorange='reversed'),  # Invert Z axis for depth
@@ -432,7 +432,7 @@ def visualize_compare_3d_models(cpt_data, ml_model_data, real_model_data,
     
     # Update overall layout
     fig.update_layout(
-        title='Comparison: ML Predictions vs. Actual CPT Measurements',
+        title='Confronto: Modello ML vs Modello Geotecnico basato su misurazioni CPT',
         width=1600,  # Wider display
         height=800,
         margin=dict(l=20, r=20, b=20, t=50)  # Minimal margins

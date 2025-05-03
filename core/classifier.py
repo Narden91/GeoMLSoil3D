@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
@@ -44,6 +44,17 @@ def train_soil_model(train_data, feature_columns, test_size=0.2, random_state=42
     # Calculate class weights inversely proportional to class frequencies
     class_weights = _calculate_class_weights(y)
     
+    # Create label encoder for XGBoost if needed
+    label_encoder = None
+    original_classes = None
+    if model_type.lower() == 'xgb':
+        label_encoder = LabelEncoder()
+        y = label_encoder.fit_transform(y)
+        original_classes = label_encoder.classes_
+        print("\nLabel encoding for XGBoost:")
+        for i, label in enumerate(original_classes):
+            print(f"  Original soil type {label} -> Encoded as {i}")
+    
     # Split data for validation
     X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=test_size, random_state=random_state, stratify=y
@@ -65,8 +76,13 @@ def train_soil_model(train_data, feature_columns, test_size=0.2, random_state=42
         sample_weights, model_type
     )
     
-    # Evaluate model
-    results = _evaluate_model(model, X_val_scaled, y_val)
+    # For XGBoost, we need to store the label encoder for later use
+    if model_type.lower() == 'xgb':
+        model.label_encoder_ = label_encoder
+        model.original_classes_ = original_classes
+    
+    # Evaluate model - need to handle the case where we used a label encoder
+    results = _evaluate_model(model, X_val_scaled, y_val, model_type, label_encoder)
     
     return model, scaler, results
 
@@ -147,10 +163,15 @@ def _create_model_config(model_type, y_train, class_weights, random_state):
         
     elif model_type.lower() == 'xgb':
         # XGBoost model with class balancing
+        # Nota: Per XGBoost, stiamo usando le classi già codificate da 0 a n-1
         # Prepara i pesi campione
         sample_weights = np.ones(len(y_train))
-        for cls, weight in class_weights.items():
-            sample_weights[y_train == cls] = weight
+        # I pesi ora sono basati sull'indice numerico perché y_train è già codificato
+        unique_classes = np.unique(y_train)
+        for i, cls in enumerate(unique_classes):
+            weight_idx = np.where(y_train == cls)[0]
+            weight_value = 1 / (len(unique_classes) * (len(weight_idx) / len(y_train)))
+            sample_weights[weight_idx] = weight_value
             
         param_grid = {
             'n_estimators': [100, 200],
@@ -207,7 +228,7 @@ def _train_model_with_grid_search(model, param_grid, X_train, y_train, sample_we
     return grid_search.best_estimator_
 
 
-def _evaluate_model(model, X_val, y_val):
+def _evaluate_model(model, X_val, y_val, model_type='rf', label_encoder=None):
     """
     Evaluate model on validation set
     
@@ -219,6 +240,10 @@ def _evaluate_model(model, X_val, y_val):
         Validation features
     y_val : array
         Validation targets
+    model_type : str
+        Type of model ('rf' or 'xgb')
+    label_encoder : LabelEncoder, optional
+        Label encoder used for XGBoost
         
     Returns:
     --------
@@ -228,20 +253,38 @@ def _evaluate_model(model, X_val, y_val):
     # Predict on validation set
     y_pred_val = model.predict(X_val)
     
-    # Calculate accuracy
-    val_accuracy = model.score(X_val, y_val)
-    
-    # Generate classification report
-    val_report = classification_report(y_val, y_pred_val)
-    
-    # Collect results
-    results = {
-        'accuracy': val_accuracy,
-        'report': val_report,
-        'y_pred': y_pred_val,
-        'y_true': y_val,
-        'best_params': model.get_params()
-    }
+    # For XGBoost, transform predictions back to original labels for evaluation
+    if model_type.lower() == 'xgb' and label_encoder is not None:
+        y_pred_val_original = label_encoder.inverse_transform(y_pred_val.astype(int))
+        y_val_original = label_encoder.inverse_transform(y_val.astype(int))
+        
+        # Calculate accuracy on original labels
+        val_accuracy = (y_pred_val_original == y_val_original).mean()
+        # Generate classification report on original labels
+        val_report = classification_report(y_val_original, y_pred_val_original)
+        
+        # Collect results
+        results = {
+            'accuracy': val_accuracy,
+            'report': val_report,
+            'y_pred': y_pred_val_original,
+            'y_true': y_val_original,
+            'best_params': model.get_params()
+        }
+    else:
+        # Calculate accuracy
+        val_accuracy = model.score(X_val, y_val)
+        # Generate classification report
+        val_report = classification_report(y_val, y_pred_val)
+        
+        # Collect results
+        results = {
+            'accuracy': val_accuracy,
+            'report': val_report,
+            'y_pred': y_pred_val,
+            'y_true': y_val,
+            'best_params': model.get_params()
+        }
     
     return results
 
@@ -273,7 +316,13 @@ def predict_soil_types(data, model, scaler, feature_columns):
     X_scaled = scaler.transform(X)
     
     # Predict soil types
-    data['predicted_soil'] = model.predict(X_scaled)
+    predictions = model.predict(X_scaled)
+    
+    # If the model is XGBoost, we need to transform predictions back to original labels
+    if hasattr(model, 'label_encoder_'):
+        predictions = model.label_encoder_.inverse_transform(predictions.astype(int))
+    
+    data['predicted_soil'] = predictions
     
     # Add abbreviations and descriptions for the predicted soil types
     data['predicted_soil_abbr'] = data['predicted_soil'].apply(SoilTypeManager.get_abbreviation)
