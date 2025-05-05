@@ -3,7 +3,7 @@ from scipy.interpolate import LinearNDInterpolator, griddata
 from scipy.spatial import cKDTree
 
 
-def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='predicted_soil', method='linear'):
+def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='predicted_soil', method='linear', fixed_bounds=None):
     """
     Create a 3D interpolation of soil types from discrete CPT points
     
@@ -19,6 +19,8 @@ def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='p
         Column name containing soil types to interpolate
     method : str
         Interpolation method ('linear' or 'nearest')
+    fixed_bounds : tuple, optional
+        Fixed bounds (x_min, x_max, y_min, y_max, z_min, z_max) to use for grid creation
         
     Returns:
     --------
@@ -37,13 +39,21 @@ def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='p
     coords_df = data[['x_coord', 'y_coord', depth_col]].copy()
     values = data[soil_col].values
     
+    # Stampa i valori unici di x_coord e y_coord per debug
+    print(f"Unique x_coord values: {sorted(coords_df['x_coord'].unique())}")
+    print(f"Unique y_coord values: {sorted(coords_df['y_coord'].unique())}")
+    
     # Check coordinate diversity
     x_unique = len(coords_df['x_coord'].unique())
     y_unique = len(coords_df['y_coord'].unique())
     print(f"Dataset has {x_unique} unique x-coordinates and {y_unique} unique y-coordinates")
     
-    # Get bounds with sanity checks
-    x_min, x_max, y_min, y_max, z_min, z_max = _get_interpolation_bounds(coords_df, depth_col)
+    # Get bounds with sanity checks - use fixed bounds if provided
+    if fixed_bounds:
+        x_min, x_max, y_min, y_max, z_min, z_max = fixed_bounds
+        print(f"Using fixed bounds: X({x_min}, {x_max}), Y({y_min}, {y_max}), Z({z_min}, {z_max})")
+    else:
+        x_min, x_max, y_min, y_max, z_min, z_max = _get_interpolation_bounds(coords_df, depth_col)
     
     # Create grid for interpolation
     x_range, y_range, z_range = _create_grid_ranges(x_min, x_max, y_min, y_max, z_min, z_max, resolution)
@@ -66,15 +76,28 @@ def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='p
             X, Y, Z
         )
     
-    return {
+    # Store the bounds used for this interpolation for reference
+    bounds_used = (x_min, x_max, y_min, y_max, z_min, z_max)
+    
+    # Per garantire compatibilità con entrambi gli stili di accesso ai dati,
+    # restituiamo sia la struttura 'grid_data' nidificata che gli attributi diretti
+    result = {
         'grid_data': {
             'X': X,
             'Y': Y, 
             'Z': Z,
             'values': grid_values
         },
-        'interpolator': interpolator
+        'interpolator': interpolator,
+        'bounds': bounds_used,
+        # Aggiungiamo anche l'accesso diretto per retrocompatibilità
+        'X': X,
+        'Y': Y,
+        'Z': Z,
+        'values': grid_values
     }
+    
+    return result
 
 
 def _get_interpolation_bounds(coords_df, depth_col, margin=5):
@@ -243,7 +266,7 @@ def _create_nearest_interpolation(points, values, X, Y, Z):
 
 
 # Funzione wrapper per compatibilità con il codice esistente
-def create_3d_interpolation_alternative(data, resolution=10, is_train_only=True, soil_col='predicted_soil'):
+def create_3d_interpolation_alternative(data, resolution=10, is_train_only=True, soil_col='predicted_soil', fixed_bounds=None):
     """
     Create a 3D interpolation of soil types using nearest neighbor method
     which is more robust than LinearNDInterpolator for problematic datasets
@@ -258,10 +281,12 @@ def create_3d_interpolation_alternative(data, resolution=10, is_train_only=True,
         Flag indicating if only training data is being used
     soil_col : str
         Column name containing soil types to interpolate
+    fixed_bounds : tuple, optional
+        Fixed bounds (x_min, x_max, y_min, y_max, z_min, z_max) to use for grid creation
         
     Returns:
     --------
     dict
         Dictionary containing interpolation results including grid data and interpolator
     """
-    return create_3d_interpolation(data, resolution, is_train_only, soil_col, method='nearest')
+    return create_3d_interpolation(data, resolution, is_train_only, soil_col, method='nearest', fixed_bounds=fixed_bounds)

@@ -377,16 +377,59 @@ def visualize_compare_3d_models(cpt_data, ml_model_data, real_model_data,
     plotly.graph_objects.Figure
         Interactive comparison visualization
     """
-    # Extract data from both models
-    X_ml = ml_model_data['X']
-    Y_ml = ml_model_data['Y']
-    Z_ml = ml_model_data['Z']
-    values_ml = ml_model_data['values']
+    print("Debug: ml_model_data keys =", ml_model_data.keys())
+    print("Debug: real_model_data keys =", real_model_data.keys())
     
-    X_real = real_model_data['X']
-    Y_real = real_model_data['Y']
-    Z_real = real_model_data['Z']
-    values_real = real_model_data['values']
+    # Verifica la struttura corretta dei dati e accedi ai dati della griglia
+    if 'grid_data' in ml_model_data:
+        grid_data_ml = ml_model_data['grid_data']
+        X_ml = grid_data_ml['X']
+        Y_ml = grid_data_ml['Y']
+        Z_ml = grid_data_ml['Z']
+        values_ml = grid_data_ml['values']
+    else:
+        # Assume struttura diretta (per retrocompatibilità)
+        X_ml = ml_model_data['X']
+        Y_ml = ml_model_data['Y']
+        Z_ml = ml_model_data['Z']
+        values_ml = ml_model_data['values']
+        
+    # Stessa verifica per i dati reali
+    if 'grid_data' in real_model_data:
+        grid_data_real = real_model_data['grid_data']
+        X_real = grid_data_real['X']
+        Y_real = grid_data_real['Y']
+        Z_real = grid_data_real['Z']
+        values_real = grid_data_real['values']
+    else:
+        # Assume struttura diretta (per retrocompatibilità)
+        X_real = real_model_data['X']
+        Y_real = real_model_data['Y']
+        Z_real = real_model_data['Z']
+        values_real = real_model_data['values']
+    
+    # Stampa le dimensioni delle griglie per debug
+    print(f"Debug: X_ml shape = {X_ml.shape}, X_real shape = {X_real.shape}")
+    print(f"Debug: Y_ml shape = {Y_ml.shape}, Y_real shape = {Y_real.shape}")
+    print(f"Debug: Z_ml shape = {Z_ml.shape}, Z_real shape = {Z_real.shape}")
+    
+    # Stampa le coordinate CPT originali
+    cpt_locations = cpt_data.groupby('cpt_id')[['x_coord', 'y_coord']].first()
+    print("Debug: CPT Locations in input data:")
+    print(cpt_locations)
+    
+    # Calculate common ranges for both plots
+    x_min = min(X_ml.min(), X_real.min())
+    x_max = max(X_ml.max(), X_real.max())
+    y_min = min(Y_ml.min(), Y_real.min())
+    y_max = max(Y_ml.max(), Y_real.max())
+    z_min = min(Z_ml.min(), Z_real.min())
+    z_max = max(Z_ml.max(), Z_real.max())
+    
+    print(f"Debug: Common ranges - X: [{x_min}, {x_max}], Y: [{y_min}, {y_max}], Z: [{z_min}, {z_max}]")
+    
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
     
     print("Creating comparative 3D visualization...")
     
@@ -419,6 +462,7 @@ def visualize_compare_3d_models(cpt_data, ml_model_data, real_model_data,
     _add_cpt_locations_to_comparative_figure(fig, cpt_data, Z_ml.min(), Z_real.min())
     
     # Update both scenes to match dimensions and orientation
+    # Use the same common range for both plots to ensure consistency
     for i in [1, 2]:
         fig.update_scenes(
             xaxis_title='X Coordinate (m)',
@@ -426,7 +470,12 @@ def visualize_compare_3d_models(cpt_data, ml_model_data, real_model_data,
             zaxis_title='Profondità (m)',
             aspectmode='manual',
             aspectratio=dict(x=1, y=1, z=0.5),  # Vertical exaggeration
-            zaxis=dict(autorange='reversed'),  # Invert Z axis for depth
+            xaxis=dict(range=[x_min, x_max]),
+            yaxis=dict(range=[y_min, y_max]),
+            zaxis=dict(
+                range=[z_max, z_min],   # Invertito per la profondità
+                autorange=False         # Disabilita l'autorange poiché impostiamo il range manualmente
+            ),
             row=1, col=i
         )
     
@@ -505,14 +554,21 @@ def _add_cpt_locations_to_comparative_figure(fig, cpt_data, z_min_ml, z_min_real
     z_min_real : float
         Minimum Z value for real model subplot
     """
-    # Get CPT locations
+    # Get CPT locations - garantire che prendiamo le coordinate originali
     cpt_locations = cpt_data.groupby('cpt_id')[['x_coord', 'y_coord']].first()
     
-    # Add to ML model subplot
+    # Stampa le posizioni CPT per debug
+    print("CPT Locations in visualizzazione:")
+    print(cpt_locations)
+    
+    # We'll use the same z_min for both plots to ensure consistency
+    z_min = min(z_min_ml, z_min_real)
+    
+    # Add to ML model subplot - primo subplot (colonna 1)
     fig.add_trace(go.Scatter3d(
         x=cpt_locations['x_coord'],
         y=cpt_locations['y_coord'],
-        z=[z_min_ml for _ in range(len(cpt_locations))],  # Place at surface
+        z=[z_min for _ in range(len(cpt_locations))],  # Place at surface
         mode='markers',
         marker=dict(
             size=8,
@@ -523,11 +579,11 @@ def _add_cpt_locations_to_comparative_figure(fig, cpt_data, z_min_ml, z_min_real
         name='CPT Locations'
     ), row=1, col=1)
     
-    # Add to real model subplot
+    # Add to real model subplot - secondo subplot (colonna 2)
     fig.add_trace(go.Scatter3d(
         x=cpt_locations['x_coord'],
         y=cpt_locations['y_coord'],
-        z=[z_min_real for _ in range(len(cpt_locations))],  # Place at surface
+        z=[z_min for _ in range(len(cpt_locations))],  # Place at surface
         mode='markers',
         marker=dict(
             size=8,

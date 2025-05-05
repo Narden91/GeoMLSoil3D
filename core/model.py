@@ -600,24 +600,112 @@ class CPT_3D_SoilModel:
         print("1. Modello basato su predizioni ML")
         print("2. Modello geotecnico basato su dati CPT reali")
         
-        # Create real soil model (geotechnical model)
-        print("\nCreando modello geotecnico dai dati CPT reali...")
-        real_model_data = self._create_soil_model('soil []', resolution, True)
+        # Usa lo stesso set di dati per entrambi i modelli
+        data_to_use = self.cpt_data.copy()
         
-        # Create ML soil model
-        print("\nCreando modello basato sulle predizioni ML...")
-        ml_model_data = self._create_soil_model('predicted_soil', resolution, True)
+        # Stampa le coordinate CPT per debug
+        cpt_locations = data_to_use.groupby('cpt_id')[['x_coord', 'y_coord']].first()
+        print("Coordinate CPT originali:")
+        print(cpt_locations)
         
-        # Visualize comparison
-        if real_model_data and ml_model_data:
-            print("\nVisualizzazione comparativa dei due modelli 3D...")
-            return visualize_compare_3d_models(
-                self.cpt_data,
-                ml_model_data, 
-                real_model_data,
-                self.soil_types,
-                self.soil_colors
+        # Calcola i limiti (bounds) unificati per entrambi i modelli
+        depth_col = data_to_use.columns[0]
+        coords_df = data_to_use[['x_coord', 'y_coord', depth_col]].copy()
+        
+        # Stampa le statistiche delle coordinate
+        print(f"Range coordinate X: {coords_df['x_coord'].min()} - {coords_df['x_coord'].max()}")
+        print(f"Range coordinate Y: {coords_df['y_coord'].min()} - {coords_df['y_coord'].max()}")
+        print(f"Range profondità: {coords_df[depth_col].min()} - {coords_df[depth_col].max()}")
+        
+        from core.interpolator import _get_interpolation_bounds
+        unified_bounds = _get_interpolation_bounds(coords_df, depth_col, margin=5)
+        print(f"Bounds unificati calcolati: {unified_bounds}")
+        
+        # Usa gli stessi bounds per entrambi i modelli e forza lo stesso metodo di interpolazione
+        interp_method = 'nearest'  # Nearest è più robusto per punti sparsi
+        
+        try:
+            # Crea il modello geotecnico con bounds unificati
+            print("\nCreando modello geotecnico dai dati CPT reali...")
+            from core.interpolator import create_3d_interpolation
+            real_model_data = create_3d_interpolation(
+                data_to_use,
+                resolution=resolution,
+                is_train_only=False,
+                soil_col='soil []',
+                method=interp_method,
+                fixed_bounds=unified_bounds
             )
+            
+            # Crea il modello ML con gli stessi bounds
+            print("\nCreando modello basato sulle predizioni ML...")
+            ml_model_data = create_3d_interpolation(
+                data_to_use,
+                resolution=resolution,
+                is_train_only=False,
+                soil_col='predicted_soil',
+                method=interp_method,
+                fixed_bounds=unified_bounds
+            )
+            
+            # Aggiungi informazioni di debug sulle coordinate nei dati del modello
+            if 'grid_data' in real_model_data:
+                print("Structure: usando 'grid_data'")
+                grid_x_real = real_model_data['grid_data']['X']
+                grid_y_real = real_model_data['grid_data']['Y']
+            else:
+                print("Structure: accesso diretto")
+                grid_x_real = real_model_data['X']
+                grid_y_real = real_model_data['Y']
+                
+            print(f"Range X nella griglia: {grid_x_real.min()} - {grid_x_real.max()}")
+            print(f"Range Y nella griglia: {grid_y_real.min()} - {grid_y_real.max()}")
+            
+            # Visualizza i modelli
+            if real_model_data and ml_model_data:
+                print("\nVisualizzazione comparativa dei due modelli 3D...")
+                from visualization.model_3d import visualize_compare_3d_models
+                return visualize_compare_3d_models(
+                    self.cpt_data,
+                    ml_model_data, 
+                    real_model_data,
+                    self.soil_types,
+                    self.soil_colors
+                )
+            
+        except Exception as e:
+            print(f"Errore nella visualizzazione comparativa: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Se fallisce, prova a visualizzare i modelli singolarmente
+            print("\nCreazione visualizzazione alternativa...")
+            try:
+                # Visualizza il modello ML
+                print("Visualizzazione del modello ML...")
+                from visualization.model_3d import visualize_3d_model
+                ml_fig = visualize_3d_model(
+                    self.cpt_data,
+                    ml_model_data['grid_data'] if 'grid_data' in ml_model_data else ml_model_data,
+                    self.soil_types,
+                    self.soil_colors,
+                    interactive=True
+                )
+                
+                # Visualizza il modello reale
+                print("Visualizzazione del modello geotecnico...")
+                real_fig = visualize_3d_model(
+                    self.cpt_data,
+                    real_model_data['grid_data'] if 'grid_data' in real_model_data else real_model_data,
+                    self.soil_types,
+                    self.soil_colors,
+                    interactive=True
+                )
+                
+                return ml_fig, real_fig
+            except Exception as e2:
+                print(f"Anche la visualizzazione alternativa è fallita: {e2}")
+                
         return None
     
     def _create_soil_model(self, soil_col, resolution, use_test_data):
