@@ -161,43 +161,24 @@ def _calculate_class_weights(y):
 def _create_model_config(model_type, y_train, class_weights, random_state):
     """
     Create model, parameter grid, and sample weights based on model type
-    
-    Parameters:
-    -----------
-    model_type : str
-        Type of model ('rf' or 'xgb')
-    y_train : Series
-        Training target variable
-    class_weights : dict
-        Dictionary of class weights
-    random_state : int
-        Random seed
-        
-    Returns:
-    --------
-    model, param_grid, sample_weights : tuple
-        Model, parameter grid, and sample weights
     """
     sample_weights = None
     
     if model_type.lower() == 'rf':
-        # Random Forest model con parametri migliorati per ridurre l'overfitting
+        # Random Forest model with class balancing
         param_grid = {
             'n_estimators': [100, 200],
-            'max_depth': [10, 15, 20],  # Limitare la profondità per ridurre l'overfitting
-            'min_samples_split': [5, 10],  # Aumentare per generalizzare meglio
-            'min_samples_leaf': [2, 4],  # Richiedere più campioni per foglia
-            'max_features': ['sqrt', 'log2'],  # Limitare il numero di feature per ogni split
+            'max_depth': [None, 15, 30],
+            'min_samples_split': [2, 5],
             'class_weight': ['balanced', 'balanced_subsample']
         }
         
         model = RandomForestClassifier(random_state=random_state)
         
     elif model_type.lower() == 'xgb':
-        # XGBoost model con parametri per gestire meglio il dataset sbilanciato
-        # Prepara i pesi campione
+        # XGBoost model - removing scale_pos_weight parameter
+        # Prepare sample weights for class balancing
         sample_weights = np.ones(len(y_train))
-        # I pesi ora sono basati sull'indice numerico perché y_train è già codificato
         unique_classes = np.unique(y_train)
         for i, cls in enumerate(unique_classes):
             weight_idx = np.where(y_train == cls)[0]
@@ -206,13 +187,11 @@ def _create_model_config(model_type, y_train, class_weights, random_state):
             
         param_grid = {
             'n_estimators': [100, 200],
-            'max_depth': [5, 8],  # Profondità più limitata
-            'learning_rate': [0.05, 0.1],
-            'subsample': [0.8, 1.0],  # Aggiunge randomizzazione
-            'colsample_bytree': [0.8, 1.0],  # Limita le feature per albero
-            'min_child_weight': [1, 3],  # Controlla l'overfitting
-            'gamma': [0, 0.1],  # Pruning minimo dell'albero
-            'scale_pos_weight': [1]  # Usa i pesi campione direttamente
+            'max_depth': [5, 8, 12],
+            'learning_rate': [0.05, 0.1, 0.2],
+            'subsample': [0.8, 1.0],  # Controls sample percentage per tree
+            'colsample_bytree': [0.8, 1.0]  # Controls feature percentage per tree
+            # scale_pos_weight parameter removed
         }
         
         model = xgb.XGBClassifier(random_state=random_state)
