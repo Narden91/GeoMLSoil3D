@@ -10,8 +10,9 @@ debug:
   save_logs: false
   verbose: false
 display:
-  cross_sections: false
-  include_test_in_3d: false
+  cross_section_interactive: true
+  cross_sections: true
+  include_test_in_3d: true
   interactive_visualization: true
   plot_cpt_locations: true
   plot_cpt_profiles: true
@@ -21,6 +22,8 @@ display:
   show_soil_distribution: true
   show_soil_legend: false
 interpolation:
+  cross_section_axis: x
+  cross_section_tolerance: 1.0
   enabled: true
   margin: 5
   resolution: 5

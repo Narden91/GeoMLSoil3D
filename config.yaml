@@ -24,8 +24,9 @@ display:
   plot_cpt_profiles: true  # Visualizza profili CPT
   plot_feature_importance: true  # Visualizza importanza delle caratteristiche
   interactive_visualization: true  # Usa visualizzazione interattiva Plotly
-  cross_sections: false  # Mostra sezioni trasversali del modello 3D
-  include_test_in_3d: false  # Includi i dati di test nel modello 3D
+  cross_sections: true  # Mostra sezioni trasversali del modello 3D
+  include_test_in_3d: true  # Includi i dati di test nel modello 3D
+  cross_section_interactive: true  # Usa interfaccia interattiva per le sezioni
 
 # Parametri per caricamento dati
 data_loading:
@@ -57,6 +58,9 @@ interpolation:
   margin: 5  # Margine attorno ai dati (metri)
   z_resolution_factor: 0.5  # Fattore per aumentare risoluzione verticale
   vertical_exaggeration: 0.5  # Esagerazione verticale per visualizzazione
+  # Nuovi parametri per le sezioni trasversali
+  cross_section_axis: "x"  # Asse predefinito per le sezioni ('x', 'y', o 'z')
+  cross_section_tolerance: 1.0  # Tolleranza per la selezione di punti CPT nelle sezioni
 
 # Colori e stile
 styling:

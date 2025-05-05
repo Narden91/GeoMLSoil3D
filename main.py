@@ -234,6 +234,27 @@ def _create_and_visualize_models(framework, interpolation, display):
         print("\nFalling back to standard single model visualization...")
         # Create standard interpolation if comparative fails
         _create_standard_visualization(framework, interpolation, display)
+    
+    # Se richiesto, crea e visualizza le sezioni trasversali
+    if display.get('cross_sections', False):
+        try:
+            print("\nCreating cross-section visualization...")
+            # Default axis è 'x'
+            axis = interpolation.get('cross_section_axis', 'x')
+            
+            # Crea la visualizzazione interattiva delle sezioni
+            framework.create_interactive_cross_section_explorer(
+                use_test_data=display.get('include_test_in_3d', False)
+            )
+            
+            # Crea anche una sezione statica per il valore centrale
+            framework.visualize_cross_sections(
+                axis=axis,
+                use_test_data=display.get('include_test_in_3d', False)
+            )
+        except Exception as e:
+            print(f"Cross-section visualization failed: {e}")
+            traceback.print_exc()
 
 
 def _create_standard_visualization(framework, interpolation, display):

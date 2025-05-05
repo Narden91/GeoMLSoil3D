@@ -291,6 +291,100 @@ class CPT_3D_SoilModel:
             accuracy = (val_y_pred[mask] == soil_type).mean() if mask.sum() > 0 else 0
             print(f"  Type {soil_type} ({abbr}) - {desc}: Accuracy {accuracy:.4f}")
     
+    def visualize_cross_sections(self, axis='x', position=None, index=None, use_test_data=True):
+        """
+        Visualizza sezioni trasversali che confrontano il modello predetto con i dati reali
+        
+        Parameters:
+        -----------
+        axis : str
+            Asse lungo il quale estrarre la sezione ('x', 'y' o 'z')
+        position : float, optional
+            Posizione esatta dove estrarre la sezione lungo l'asse specificato
+        index : int, optional
+            Indice della slice da estrarre (alternativa a position)
+        use_test_data : bool
+            Se includere i dati di test nella visualizzazione
+            
+        Returns:
+        --------
+        plotly.graph_objects.Figure
+            Figura interattiva con il confronto delle sezioni
+        """
+        if self.cpt_data is None:
+            raise ValueError("Nessun dato caricato. Chiama load_data() prima.")
+        
+        if 'soil []' not in self.cpt_data.columns:
+            raise ValueError("Nessuna colonna di classificazione del suolo trovata nei dati")
+        
+        if 'predicted_soil' not in self.cpt_data.columns:
+            raise ValueError("Nessun tipo di suolo predetto. Chiama predict_soil_types() prima.")
+        
+        print("\nCreazione di sezioni trasversali per confronto:")
+        print(f"Asse selezionato: {axis}")
+        
+        # Seleziona quali dati utilizzare
+        data_to_use = self.cpt_data if use_test_data else self.train_data
+        
+        # Crea il modello ML (basato sulle predizioni)
+        ml_model_data = self._create_soil_model('predicted_soil', resolution=5, use_test_data=use_test_data)
+        
+        # Crea il modello geotecnico (basato sui dati reali)
+        real_model_data = self._create_soil_model('soil []', resolution=5, use_test_data=use_test_data)
+        
+        # Importa le funzioni di visualizzazione
+        from visualization.cross_sections import visualize_compare_cross_sections
+        
+        # Crea la visualizzazione comparativa
+        return visualize_compare_cross_sections(
+            ml_model_data, real_model_data, 
+            axis=axis, position=position, index=index,
+            soil_types=self.soil_types, soil_colors=self.soil_colors
+        )
+
+    def create_interactive_cross_section_explorer(self, use_test_data=True):
+        """
+        Crea un'interfaccia interattiva per esplorare le sezioni trasversali
+        
+        Parameters:
+        -----------
+        use_test_data : bool
+            Se includere i dati di test nella visualizzazione
+            
+        Returns:
+        --------
+        plotly.graph_objects.Figure
+            Figura interattiva per l'esplorazione delle sezioni
+        """
+        if self.cpt_data is None:
+            raise ValueError("Nessun dato caricato. Chiama load_data() prima.")
+        
+        if 'soil []' not in self.cpt_data.columns:
+            raise ValueError("Nessuna colonna di classificazione del suolo trovata nei dati")
+        
+        if 'predicted_soil' not in self.cpt_data.columns:
+            raise ValueError("Nessun tipo di suolo predetto. Chiama predict_soil_types() prima.")
+        
+        print("\nCreazione dell'interfaccia interattiva per l'esplorazione delle sezioni trasversali...")
+        
+        # Seleziona quali dati utilizzare
+        data_to_use = self.cpt_data if use_test_data else self.train_data
+        
+        # Crea il modello ML (basato sulle predizioni)
+        ml_model_data = self._create_soil_model('predicted_soil', resolution=5, use_test_data=use_test_data)
+        
+        # Crea il modello geotecnico (basato sui dati reali)
+        real_model_data = self._create_soil_model('soil []', resolution=5, use_test_data=use_test_data)
+        
+        # Importa la funzione di creazione dell'interfaccia
+        from visualization.cross_sections import create_interactive_cross_section_ui
+        
+        # Crea l'interfaccia interattiva
+        return create_interactive_cross_section_ui(
+            data_to_use, ml_model_data, real_model_data,
+            soil_types=self.soil_types, soil_colors=self.soil_colors
+        )
+    
     def evaluate_on_test_data(self):
         """
         Evaluate the trained model on the separate test data set

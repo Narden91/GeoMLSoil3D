@@ -84,6 +84,22 @@ def update_config_from_args(config, args):
             config['soil_classification'] = {}
         config['soil_classification']['use_all_features'] = True
     
+    # Nuovi parametri
+    if args.cross_sections:
+        if 'display' not in config:
+            config['display'] = {}
+        config['display']['cross_sections'] = True
+    
+    if args.cross_section_axis is not None:
+        if 'interpolation' not in config:
+            config['interpolation'] = {}
+        config['interpolation']['cross_section_axis'] = args.cross_section_axis
+    
+    if args.interactive_cross_section:
+        if 'display' not in config:
+            config['display'] = {}
+        config['display']['cross_section_interactive'] = True
+    
     return config
 
 
@@ -103,6 +119,12 @@ def create_argument_parser():
     parser.add_argument('--use-test-in-3d', action='store_true', help='Include test data in 3D visualization')
     parser.add_argument('--locations', type=str, help='Path to CSV file with CPT coordinates')
     parser.add_argument('--use-all-features', action='store_true', help='Use all available numerical features for the model')
+    # Nuovi parametri
+    parser.add_argument('--cross-sections', action='store_true', help='Create cross-section visualizations')
+    parser.add_argument('--cross-section-axis', type=str, choices=['x', 'y', 'z'], 
+                      help='Axis for cross-section (x, y, or z)')
+    parser.add_argument('--interactive-cross-section', action='store_true', 
+                      help='Use interactive interface for cross-sections')
     
     return parser
 
