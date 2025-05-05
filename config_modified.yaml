@@ -43,6 +43,7 @@ soil_classification:
   model_type: rf
   random_state: 42
   test_size: 0.2
+  use_all_features: true
 styling:
   colormap: viridis
   line_width: 1.5

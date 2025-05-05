@@ -42,7 +42,8 @@ soil_classification:
   test_size: 0.2  # Percentuale di file CPT per test
   random_state: 42  # Seed per riproducibilità
   compute_missing: true  # Calcola i tipi di suolo mancanti usando qc e Rf
-  features:  # Features da utilizzare per la classificazione
+  use_all_features: true  # Utilizza tutte le caratteristiche numeriche disponibili
+  features:  # Features da utilizzare se use_all_features è false
     - "qc [MPa]"
     - "fs [MPa]"
     - "Rf [%]"

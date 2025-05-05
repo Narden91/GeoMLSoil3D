@@ -202,7 +202,7 @@ class CPT_3D_SoilModel:
             print(f"\nPlotting example CPT profile from testing set: {test_example}")
             plot_cpt_profile(self.test_data, test_example)
             
-    def train_soil_classification_model(self, test_size=0.2, random_state=42, model_type='rf'):
+    def train_soil_classification_model(self, test_size=0.2, random_state=42, model_type='rf', use_all_features=True):
         """
         Train a machine learning model to predict soil type from CPT parameters
         using the training data set only
@@ -215,6 +215,8 @@ class CPT_3D_SoilModel:
             Random seed for reproducibility
         model_type : str
             Type of model to train ('rf' for Random Forest, 'xgb' for XGBoost)
+        use_all_features : bool
+            Whether to use all available numerical features instead of predefined ones
         """
         if self.train_data is None:
             raise ValueError("No training data loaded. Call load_data() first.")
@@ -225,9 +227,21 @@ class CPT_3D_SoilModel:
         print("Training soil classification model using only training data...")
         
         # Define features and target
-        if self.feature_columns is None:
+        if use_all_features:
+            # Get all numeric columns except specific ones to exclude
+            exclude_cols = ['cpt_id', 'is_train', 'soil []', 'soil_abbr', 'soil_desc', 
+                        'predicted_soil', 'predicted_soil_abbr', 'predicted_soil_desc',
+                        'x_coord', 'y_coord']
+            
+            numeric_cols = self.train_data.select_dtypes(include=np.number).columns
+            self.feature_columns = [col for col in numeric_cols if col not in exclude_cols]
+            
+            print(f"Using all available numeric features: {self.feature_columns}")
+            print(f"Total number of features: {len(self.feature_columns)}")
+        elif self.feature_columns is None:
             # Default feature columns if not specified
             self.feature_columns = ['qc [MPa]', 'fs [MPa]', 'Rf [%]', 'u2 [MPa]']
+            print(f"Using default features: {self.feature_columns}")
         
         # Train the model
         self.soil_model, self.scaler, validation_results = train_soil_model(

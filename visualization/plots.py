@@ -206,12 +206,31 @@ def plot_feature_importance(model, feature_columns):
         importances = model.feature_importances_
         indices = np.argsort(importances)[::-1]
         
-        plt.figure(figsize=(10, 6))
+        # Gestire il caso di molte caratteristiche
+        n_features = len(feature_columns)
+        
+        # Se ci sono troppe caratteristiche, mostra solo le N più importanti
+        max_display = 20
+        if n_features > max_display:
+            print(f"Showing only the top {max_display} most important features out of {n_features} total")
+            indices = indices[:max_display]
+        
+        plt.figure(figsize=(12, max(6, n_features * 0.3)))
         plt.title('Feature Importance for Soil Classification')
-        plt.bar(range(len(feature_columns)), importances[indices], align='center')
-        plt.xticks(range(len(feature_columns)), [feature_columns[i] for i in indices], rotation=45)
+        
+        # Crea un grafico a barre orizzontale per una migliore visualizzazione con molte caratteristiche
+        y_pos = np.arange(len(indices))
+        plt.barh(y_pos, importances[indices], align='center')
+        plt.yticks(y_pos, [feature_columns[i] for i in indices])
+        plt.xlabel('Importance')
+        plt.ylabel('Features')
         plt.tight_layout()
         plt.show()
+        
+        # Stampa anche i valori di importanza
+        print("\nFeature importance values:")
+        for i in indices:
+            print(f"{feature_columns[i]}: {importances[i]:.4f}")
 
 
 def plot_soil_legend():

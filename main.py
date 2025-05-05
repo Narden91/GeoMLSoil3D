@@ -184,12 +184,14 @@ def _train_and_evaluate_model(framework, soil_classification, display):
     model_type = soil_classification.get('model_type', 'rf')
     validation_size = 0.1  # Use a portion of training set for internal validation
     random_state = soil_classification.get('random_state', 42)
+    use_all_features = soil_classification.get('use_all_features', True)  # Nuovo parametro
     
     # Train soil classification model
     model = framework.train_soil_classification_model(
         model_type=model_type,
         test_size=validation_size,
-        random_state=random_state
+        random_state=random_state,
+        use_all_features=use_all_features  # Passaggio del nuovo parametro
     )
     
     # Evaluate on external test set

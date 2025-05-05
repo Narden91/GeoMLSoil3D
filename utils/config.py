@@ -79,6 +79,11 @@ def update_config_from_args(config, args):
             config['paths'] = {}
         config['paths']['locations'] = args.locations
     
+    if args.use_all_features:
+        if 'soil_classification' not in config:
+            config['soil_classification'] = {}
+        config['soil_classification']['use_all_features'] = True
+    
     return config
 
 
@@ -97,6 +102,7 @@ def create_argument_parser():
     parser.add_argument('--model-type', type=str, choices=['rf', 'xgb'], help='Machine learning model type')
     parser.add_argument('--use-test-in-3d', action='store_true', help='Include test data in 3D visualization')
     parser.add_argument('--locations', type=str, help='Path to CSV file with CPT coordinates')
+    parser.add_argument('--use-all-features', action='store_true', help='Use all available numerical features for the model')
     
     return parser
 
@@ -148,6 +154,7 @@ def get_default_config():
             "test_size": 0.2,
             "random_state": 42,
             "compute_missing": True,
+            "use_all_features": True,  # Nuova opzione
             "features": [
                 "qc [MPa]",
                 "fs [MPa]",
