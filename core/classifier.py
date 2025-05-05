@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
@@ -64,6 +65,35 @@ def train_soil_model(train_data, feature_columns, test_size=0.2, random_state=42
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_val_scaled = scaler.transform(X_val)
+    
+    # Apply resampling techniques per applicare SMOTE o sampling
+    try:
+        from imblearn.over_sampling import SMOTE, RandomOverSampler
+        from imblearn.under_sampling import RandomUnderSampler
+        from imblearn.pipeline import Pipeline
+        
+        print("\nApplying resampling techniques to balance classes...")
+        
+        # Creiamo una pipeline di resampling
+        # Prima SMOTE per le classi minoritarie, poi undersampling per ridurre le classi maggioritarie
+        # Questo approccio è spesso più efficace del solo SMOTE
+        over = SMOTE(sampling_strategy='auto', random_state=random_state)
+        under = RandomUnderSampler(sampling_strategy='auto', random_state=random_state)
+        
+        steps = [('over', over), ('under', under)]
+        pipeline = Pipeline(steps=steps)
+        
+        # Applichiamo la pipeline
+        X_train_scaled, y_train = pipeline.fit_resample(X_train_scaled, y_train)
+        
+        print(f"After resampling: {len(X_train_scaled)} samples")
+        y_train_counts = pd.Series(y_train).value_counts()
+        print("New class distribution after resampling:")
+        for cls, count in sorted(y_train_counts.items()):
+            print(f"  Class {cls}: {count} samples")
+            
+    except ImportError:
+        print("imblearn not installed. Skipping resampling. Install with: pip install imbalanced-learn")
     
     # Create and configure model based on type
     model, param_grid, sample_weights = _create_model_config(
@@ -151,19 +181,20 @@ def _create_model_config(model_type, y_train, class_weights, random_state):
     sample_weights = None
     
     if model_type.lower() == 'rf':
-        # Random Forest model with class balancing
+        # Random Forest model con parametri migliorati per ridurre l'overfitting
         param_grid = {
-            'n_estimators': [100, 200],  # Più estimator
-            'max_depth': [None, 15, 30],  # Profondità maggiore
-            'min_samples_split': [2, 5],
-            'class_weight': ['balanced', 'balanced_subsample']  # Pesi bilanciati
+            'n_estimators': [100, 200],
+            'max_depth': [10, 15, 20],  # Limitare la profondità per ridurre l'overfitting
+            'min_samples_split': [5, 10],  # Aumentare per generalizzare meglio
+            'min_samples_leaf': [2, 4],  # Richiedere più campioni per foglia
+            'max_features': ['sqrt', 'log2'],  # Limitare il numero di feature per ogni split
+            'class_weight': ['balanced', 'balanced_subsample']
         }
         
         model = RandomForestClassifier(random_state=random_state)
         
     elif model_type.lower() == 'xgb':
-        # XGBoost model with class balancing
-        # Nota: Per XGBoost, stiamo usando le classi già codificate da 0 a n-1
+        # XGBoost model con parametri per gestire meglio il dataset sbilanciato
         # Prepara i pesi campione
         sample_weights = np.ones(len(y_train))
         # I pesi ora sono basati sull'indice numerico perché y_train è già codificato
@@ -175,8 +206,12 @@ def _create_model_config(model_type, y_train, class_weights, random_state):
             
         param_grid = {
             'n_estimators': [100, 200],
-            'max_depth': [5, 8, 12],
-            'learning_rate': [0.05, 0.1, 0.2],
+            'max_depth': [5, 8],  # Profondità più limitata
+            'learning_rate': [0.05, 0.1],
+            'subsample': [0.8, 1.0],  # Aggiunge randomizzazione
+            'colsample_bytree': [0.8, 1.0],  # Limita le feature per albero
+            'min_child_weight': [1, 3],  # Controlla l'overfitting
+            'gamma': [0, 0.1],  # Pruning minimo dell'albero
             'scale_pos_weight': [1]  # Usa i pesi campione direttamente
         }
         
@@ -260,8 +295,11 @@ def _evaluate_model(model, X_val, y_val, model_type='rf', label_encoder=None):
         
         # Calculate accuracy on original labels
         val_accuracy = (y_pred_val_original == y_val_original).mean()
-        # Generate classification report on original labels
-        val_report = classification_report(y_val_original, y_pred_val_original)
+        
+        # Generate classification report on original labels with zero_division=0
+        # per evitare i warning quando non ci sono campioni predetti per una classe
+        val_report = classification_report(y_val_original, y_pred_val_original, 
+                                          zero_division=0)
         
         # Collect results
         results = {
@@ -274,8 +312,9 @@ def _evaluate_model(model, X_val, y_val, model_type='rf', label_encoder=None):
     else:
         # Calculate accuracy
         val_accuracy = model.score(X_val, y_val)
-        # Generate classification report
-        val_report = classification_report(y_val, y_pred_val)
+        
+        # Generate classification report with zero_division=0
+        val_report = classification_report(y_val, y_pred_val, zero_division=0)
         
         # Collect results
         results = {

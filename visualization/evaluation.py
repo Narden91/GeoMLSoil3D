@@ -52,9 +52,15 @@ def _plot_normalized_confusion_matrix(cm, soil_types, tick_labels):
     tick_labels : list
         List of tick labels
     """
-    # Normalize by row (true values)
-    cm_norm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-    cm_norm = np.nan_to_num(cm_norm)  # Replace NaN with 0
+    # Normalize by row (true values) with gestione del caso di riga con somma zero
+    cm_norm = np.zeros_like(cm, dtype=float)
+    
+    # Per ogni riga, normalizza solo se la somma è maggiore di zero
+    row_sums = cm.sum(axis=1)
+    for i in range(cm.shape[0]):
+        if row_sums[i] > 0:
+            cm_norm[i, :] = cm[i, :] / row_sums[i]
+        # Le righe con somma zero rimarranno a zero
     
     plt.figure(figsize=(12, 10))
     sns.heatmap(cm_norm, annot=True, fmt='.2f', cmap='Blues', 
