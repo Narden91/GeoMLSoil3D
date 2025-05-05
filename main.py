@@ -53,7 +53,7 @@ def main(config_path="config.yaml"):
     
     # Load data and perform data exploration
     framework = _load_and_explore_data(framework, data_path, data_loading, display, 
-                                       soil_classification, debug_cfg)
+                                        soil_classification, debug_cfg, paths)
     
     # Train and evaluate soil classification model if enabled
     if soil_classification.get('enabled', True):
@@ -84,7 +84,7 @@ def _display_soil_legend():
     plot_soil_legend()
 
 
-def _load_and_explore_data(framework, data_path, data_loading, display, soil_classification, debug_cfg):
+def _load_and_explore_data(framework, data_path, data_loading, display, soil_classification, debug_cfg, paths):
     """
     Load data and perform data exploration
     
@@ -102,6 +102,8 @@ def _load_and_explore_data(framework, data_path, data_loading, display, soil_cla
         Soil classification configuration
     debug_cfg : dict
         Debug configuration
+    paths : dict
+        Paths configuration
         
     Returns:
     --------
@@ -111,13 +113,15 @@ def _load_and_explore_data(framework, data_path, data_loading, display, soil_cla
     # Load data with train/test split
     test_size = soil_classification.get('test_size', 0.2)
     random_state = soil_classification.get('random_state', 42)
+    locations_path = paths.get('locations', 'location.csv')
     
     train_data, test_data = framework.load_data(
         data_path,
         x_coord_col=data_loading.get('x_coord_col'), 
         y_coord_col=data_loading.get('y_coord_col'),
         test_size=test_size,
-        random_state=random_state
+        random_state=random_state,
+        locations_path=locations_path
     )
     
     # Check for sufficient unique coordinates

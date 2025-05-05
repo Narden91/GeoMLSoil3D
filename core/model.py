@@ -35,7 +35,7 @@ class CPT_3D_SoilModel:
         self.soil_manager = SoilTypeManager()
     
     def load_data(self, file_pattern, x_coord_col=None, y_coord_col=None, test_size=0.2, random_state=42,
-             auto_detect=True, encoding='utf-8', separator=',', header=0, depth_col=None):
+             auto_detect=True, encoding='utf-8', separator=',', header=0, depth_col=None, locations_path="location.csv"):
         """
         Carica dati CPT da più file e li combina con coordinate spaziali.
         Divide i dati tra training e testing basandosi sui file CPT.
@@ -62,6 +62,8 @@ class CPT_3D_SoilModel:
             Riga da usare come intestazione (se auto_detect=False)
         depth_col : str, optional
             Nome della colonna contenente i valori di profondità
+        locations_path : str
+            Percorso al file CSV con le coordinate dei CPT
         """
         print(f"Caricamento dati dal pattern: {file_pattern}")
         
@@ -74,13 +76,13 @@ class CPT_3D_SoilModel:
         train_data = load_cpt_files(
             train_files, x_coord_col, y_coord_col, is_train=True,
             auto_detect=auto_detect, encoding=encoding, separator=separator,
-            header=header, depth_col=depth_col
+            header=header, depth_col=depth_col, locations_path=locations_path
         )
         
         test_data = load_cpt_files(
             test_files, x_coord_col, y_coord_col, is_train=False,
             auto_detect=auto_detect, encoding=encoding, separator=separator,
-            header=header, depth_col=depth_col
+            header=header, depth_col=depth_col, locations_path=locations_path
         )
         
         # Memorizza i dati

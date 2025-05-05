@@ -5,6 +5,7 @@ paths:
   data: "data/CPT_*.csv"  # Pattern per i file di dati CPT
   model_output: "cpt_soil_model.pkl"  # File per salvare il modello
   output_dir: "output/"  # Cartella per i risultati
+  locations: "location.csv"  # File con le coordinate CPT
 
 # Impostazioni di debug
 debug:

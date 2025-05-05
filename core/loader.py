@@ -7,6 +7,194 @@ import random
 from utils.soil_types import SoilTypeManager
 from utils.helpers import generate_spiral_coords
 
+
+def load_locations_from_csv(locations_path="location.csv"):
+    """
+    Carica le coordinate da un file CSV di localizzazione.
+    
+    Parameters:
+    -----------
+    locations_path : str
+        Percorso al file CSV con le coordinate
+        
+    Returns:
+    --------
+    dict
+        Dizionario che mappa LogID alle coordinate {LogID: (x, y)}
+    """
+    try:
+        # Verifica se il file esiste
+        if not os.path.exists(locations_path):
+            # Se il percorso non è trovato, prova a cercarlo nella sottocartella data
+            data_path = os.path.join("data", os.path.basename(locations_path))
+            if os.path.exists(data_path):
+                locations_path = data_path
+                print(f"Trovato file delle coordinate in {locations_path}")
+            else:
+                print(f"File delle coordinate non trovato né in {locations_path} né in {data_path}")
+                return {}
+        
+        # Carica il file delle coordinate
+        locations_df = pd.read_csv(locations_path)
+        
+        # Verifica le colonne necessarie
+        required_cols = ['LogID', 'X', 'Y']
+        if not all(col in locations_df.columns for col in required_cols):
+            print(f"ATTENZIONE: Il file {locations_path} non contiene tutte le colonne necessarie: {required_cols}")
+            return {}
+        
+        # Crea un dizionario che mappa LogID alle coordinate
+        locations_map = {}
+        for _, row in locations_df.iterrows():
+            locations_map[row['LogID']] = (row['X'], row['Y'])
+        
+        print(f"Caricate {len(locations_map)} coordinate da {locations_path}")
+        return locations_map
+    
+    except Exception as e:
+        print(f"Errore nel caricamento del file delle coordinate {locations_path}: {str(e)}")
+        return {}
+    
+
+def handle_coordinates(df, index, total_files, x_coord_col=None, y_coord_col=None, file_name="", locations_map=None):
+    """
+    Gestisce le colonne delle coordinate nel dataframe
+    
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        DataFrame di input
+    index : int
+        Indice del file
+    total_files : int
+        Numero totale di file
+    x_coord_col : str, optional
+        Nome della colonna contenente le coordinate X
+    y_coord_col : str, optional
+        Nome della colonna contenente le coordinate Y
+    file_name : str
+        Nome del file per logging
+    locations_map : dict, optional
+        Dizionario che mappa LogID alle coordinate {LogID: (x, y)}
+        
+    Returns:
+    --------
+    pandas.DataFrame
+        DataFrame con coordinate gestite
+    """
+    # Verifica se le colonne standard esistono già
+    if 'x_coord' in df.columns and 'y_coord' in df.columns:
+        return df
+    
+    # Se abbiamo una mappa delle coordinate, proviamo a usarla
+    if locations_map is not None:
+        cpt_id = extract_cpt_id_from_filename(file_name)
+        if cpt_id is not None and cpt_id in locations_map:
+            # Abbiamo trovato le coordinate nella mappa
+            x, y = locations_map[cpt_id]
+            print(f"Usando coordinate da location.csv per {file_name} (LogID: {cpt_id}): ({x}, {y})")
+            df['x_coord'] = x
+            df['y_coord'] = y
+            return df
+    
+    # Cerca le colonne delle coordinate se non specificate
+    if x_coord_col is None or y_coord_col is None:
+        x_candidates = [col for col in df.columns if any(term in col.lower() 
+                       for term in ['x', 'east', 'long', 'e_', 'x_', 'utm_e'])]
+        y_candidates = [col for col in df.columns if any(term in col.lower() 
+                       for term in ['y', 'north', 'lat', 'n_', 'y_', 'utm_n'])]
+        
+        if x_candidates and y_candidates:
+            x_coord_col = x_candidates[0]
+            y_coord_col = y_candidates[0]
+            print(f"Trovate colonne di coordinate: {x_coord_col}, {y_coord_col} per {file_name}")
+    
+    # Se abbiamo colonne di coordinate nei dati, usale
+    if x_coord_col in df.columns and y_coord_col in df.columns:
+        print(f"Uso coordinate dalle colonne '{x_coord_col}' e '{y_coord_col}' per {file_name}.")
+        df = df.rename(columns={x_coord_col: 'x_coord', y_coord_col: 'y_coord'})
+        
+        # Controlla se le coordinate sono costanti nel file, come ci si aspetta per un CPT
+        if df['x_coord'].nunique() > 1 or df['y_coord'].nunique() > 1:
+            print(f"ATTENZIONE: Multiple coordinate (x, y) trovate nel singolo file CPT {file_name}.")
+            print(f"Usando le coordinate più comuni.")
+            
+            # Usa le coordinate più comuni
+            x_most_common = df['x_coord'].mode()[0]
+            y_most_common = df['y_coord'].mode()[0]
+            df['x_coord'] = x_most_common
+            df['y_coord'] = y_most_common
+    else:
+        print(f"Coordinate non trovate per {file_name}. Generazione di coordinate spaziali uniche per questo CPT.")
+        
+        # Genera coordinate artificiali con pattern a spirale ma con jitter controllato
+        x, y = generate_spiral_coords(index, max(100, total_files))
+        
+        # Aggiungi un piccolo jitter per evitare problemi di interpolazione
+        jitter = 0.2  # Variazione minima per evitare punti perfettamente allineati
+        x += np.random.uniform(-jitter, jitter)
+        y += np.random.uniform(-jitter, jitter)
+        
+        # Assegna le stesse coordinate generate a tutte le righe
+        df['x_coord'] = x
+        df['y_coord'] = y
+        
+        print(f"Assegnate coordinate generate ({x:.2f}, {y:.2f}) a tutti i punti in {file_name}")
+    
+    return df
+
+
+def extract_cpt_id_from_filename(file_name):
+    """
+    Estrae l'ID del CPT dal nome del file.
+    
+    Parameters:
+    -----------
+    file_name : str
+        Nome del file CPT (es. CPT_983_RAW01.csv)
+        
+    Returns:
+    --------
+    int o None
+        ID del CPT se trovato, altrimenti None
+    """
+    # Verifica che il nome del file non sia vuoto
+    if not file_name:
+        return None
+    
+    # Rimuovi l'estensione se presente
+    if '.' in file_name:
+        file_name = file_name.split('.')[0]
+    
+    # Prima prova a cercare il pattern CPT_XXX_
+    match = re.search(r'CPT_(\d+)_', file_name)
+    if match:
+        try:
+            return int(match.group(1))
+        except ValueError:
+            pass
+    
+    # Prova pattern alternativi come CPT-XXX o CPT.XXX
+    alt_patterns = [r'CPT[-.](\d+)', r'(\d+)[-_]CPT', r'CPT.*?(\d{3,4})']
+    for pattern in alt_patterns:
+        match = re.search(pattern, file_name)
+        if match:
+            try:
+                return int(match.group(1))
+            except ValueError:
+                continue
+    
+    # Se nessun pattern corrisponde, tenta di estrarre qualsiasi sequenza di 3-4 cifre
+    digits_match = re.search(r'(\d{3,4})', file_name)
+    if digits_match:
+        try:
+            return int(digits_match.group(1))
+        except ValueError:
+            pass
+    
+    print(f"Impossibile estrarre ID CPT dal nome file: {file_name}")
+    return None
+
 def detect_csv_format(file_path):
     """
     Rileva automaticamente il formato del file CSV
@@ -106,7 +294,7 @@ def standardize_column_names(df):
     
     return df
 
-def handle_coordinates(df, index, total_files, x_coord_col=None, y_coord_col=None, file_name=""):
+def handle_coordinates(df, index, total_files, x_coord_col=None, y_coord_col=None, file_name="", locations_map=None):
     """
     Gestisce le colonne delle coordinate nel dataframe
     
@@ -124,6 +312,8 @@ def handle_coordinates(df, index, total_files, x_coord_col=None, y_coord_col=Non
         Nome della colonna contenente le coordinate Y
     file_name : str
         Nome del file per logging
+    locations_map : dict, optional
+        Dizionario che mappa LogID alle coordinate {LogID: (x, y)}
         
     Returns:
     --------
@@ -133,6 +323,17 @@ def handle_coordinates(df, index, total_files, x_coord_col=None, y_coord_col=Non
     # Verifica se le colonne standard esistono già
     if 'x_coord' in df.columns and 'y_coord' in df.columns:
         return df
+    
+    # Se abbiamo una mappa delle coordinate, proviamo a usarla
+    if locations_map is not None:
+        cpt_id = extract_cpt_id_from_filename(file_name)
+        if cpt_id is not None and cpt_id in locations_map:
+            # Abbiamo trovato le coordinate nella mappa
+            x, y = locations_map[cpt_id]
+            print(f"Usando coordinate da location.csv per {file_name} (LogID: {cpt_id}): ({x}, {y})")
+            df['x_coord'] = x
+            df['y_coord'] = y
+            return df
     
     # Cerca le colonne delle coordinate se non specificate
     if x_coord_col is None or y_coord_col is None:
@@ -338,7 +539,7 @@ def infer_missing_features(df, file_name):
 
 def load_and_preprocess_file(file_path, index, total_files, is_train=True, auto_detect=True, 
                             x_coord_col=None, y_coord_col=None, encoding='utf-8', separator=',', 
-                            header=0, depth_col=None):
+                            header=0, depth_col=None, locations_map=None):
     """
     Carica e preelabora un singolo file CPT
     
@@ -366,6 +567,8 @@ def load_and_preprocess_file(file_path, index, total_files, is_train=True, auto_
         Indice di riga da usare come intestazione
     depth_col : str, optional
         Nome della colonna contenente valori di profondità
+    locations_map : dict, optional
+        Dizionario che mappa LogID alle coordinate {LogID: (x, y)}
         
     Returns:
     --------
@@ -429,8 +632,9 @@ def load_and_preprocess_file(file_path, index, total_files, is_train=True, auto_
         df['cpt_id'] = file_name
         df['is_train'] = is_train
         
-        # Gestisci le coordinate
-        df = handle_coordinates(df, index, total_files, x_coord_col, y_coord_col, file_name)
+        # Gestisci le coordinate - Usa la mappa delle coordinate se disponibile
+        file_basename = os.path.basename(file_path)
+        df = handle_coordinates(df, index, total_files, x_coord_col, y_coord_col, file_basename, locations_map)
         
         # Tenta di inferire caratteristiche mancanti
         df = infer_missing_features(df, file_name)
@@ -448,7 +652,8 @@ def load_and_preprocess_file(file_path, index, total_files, is_train=True, auto_
         raise
 
 def load_cpt_files(file_paths, x_coord_col=None, y_coord_col=None, is_train=True,
-                  auto_detect=True, encoding='utf-8', separator=',', header=0, depth_col=None):
+                  auto_detect=True, encoding='utf-8', separator=',', header=0, depth_col=None, 
+                  locations_path="location.csv"):
     """
     Carica i dati CPT dai file specificati
     
@@ -472,12 +677,17 @@ def load_cpt_files(file_paths, x_coord_col=None, y_coord_col=None, is_train=True
         Indice di riga da usare come intestazione
     depth_col : str, optional
         Nome della colonna contenente valori di profondità
+    locations_path : str
+        Percorso al file CSV con le coordinate dei CPT
         
     Returns:
     --------
     pandas.DataFrame
         Dati combinati dai file specificati
     """
+    # Prima carica la mappa delle coordinate
+    locations_map = load_locations_from_csv(locations_path)
+    
     dataset_type = "training" if is_train else "testing"
     all_data = []
     total_files = len(file_paths)
@@ -487,8 +697,16 @@ def load_cpt_files(file_paths, x_coord_col=None, y_coord_col=None, is_train=True
         try:
             df = load_and_preprocess_file(
                 file_path, i, total_files, is_train, auto_detect,
-                x_coord_col, y_coord_col, encoding, separator, header, depth_col
+                x_coord_col, y_coord_col, encoding, separator, header, depth_col, locations_map
             )
+            
+            # Verifica che la colonna is_train sia presente e impostata correttamente
+            if 'is_train' not in df.columns:
+                df['is_train'] = is_train
+            elif df['is_train'].nunique() > 1:
+                # Se ci sono valori misti, forza il valore corretto
+                print(f"ATTENZIONE: Valori misti nella colonna is_train per {file_path}. Impostazione forzata a {is_train}")
+                df['is_train'] = is_train
             
             all_data.append(df)
             success_count += 1
@@ -502,6 +720,13 @@ def load_cpt_files(file_paths, x_coord_col=None, y_coord_col=None, is_train=True
     if all_data:
         combined_data = pd.concat(all_data, ignore_index=True)
         print(f"Dataset {dataset_type} combinato contiene {len(combined_data)} record da {success_count}/{total_files} file")
+        
+        # Verifica che tutti i record abbiano il flag is_train corretto
+        if 'is_train' in combined_data.columns:
+            wrong_train_count = combined_data[combined_data['is_train'] != is_train].shape[0]
+            if wrong_train_count > 0:
+                print(f"ATTENZIONE: {wrong_train_count} record hanno un valore errato nella colonna is_train. Correzione...")
+                combined_data['is_train'] = is_train
         
         # Controlla problemi di coordinate
         check_coordinates(combined_data, dataset_type)

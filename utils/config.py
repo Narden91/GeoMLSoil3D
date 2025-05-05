@@ -74,6 +74,11 @@ def update_config_from_args(config, args):
             config['display'] = {}
         config['display']['include_test_in_3d'] = True
     
+    if args.locations is not None:
+        if 'paths' not in config:
+            config['paths'] = {}
+        config['paths']['locations'] = args.locations
+    
     return config
 
 
@@ -91,6 +96,7 @@ def create_argument_parser():
     parser.add_argument('--test-size', type=float, help='Proportion of CPT files to use for testing')
     parser.add_argument('--model-type', type=str, choices=['rf', 'xgb'], help='Machine learning model type')
     parser.add_argument('--use-test-in-3d', action='store_true', help='Include test data in 3D visualization')
+    parser.add_argument('--locations', type=str, help='Path to CSV file with CPT coordinates')
     
     return parser
 
@@ -108,7 +114,8 @@ def get_default_config():
         "paths": {
             "data": "data/CPT_*.csv",
             "model_output": "cpt_soil_model.pkl",
-            "output_dir": "output/"
+            "output_dir": "output/",
+            "locations": "location.csv"
         },
         "debug": {
             "enabled": False,

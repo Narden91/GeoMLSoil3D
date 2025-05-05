@@ -23,10 +23,20 @@ def visualize_3d_model(cpt_data, interpolation_data, soil_types=None, soil_color
     interactive : bool
         Whether to create an interactive Plotly visualization
     """
-    X = interpolation_data['X']
-    Y = interpolation_data['Y']
-    Z = interpolation_data['Z']
-    values = interpolation_data['values']
+    # Stampa informazioni di debug sulle coordinate CPT
+    print_cpt_coordinates_info(cpt_data)
+    
+    # Estrai i dati della griglia
+    if 'grid_data' in interpolation_data:
+        X = interpolation_data['grid_data']['X']
+        Y = interpolation_data['grid_data']['Y']
+        Z = interpolation_data['grid_data']['Z']
+        values = interpolation_data['grid_data']['values']
+    else:
+        X = interpolation_data['X']
+        Y = interpolation_data['Y']
+        Z = interpolation_data['Z']
+        values = interpolation_data['values']
     
     print("Creating 3D visualization...")
     
@@ -177,6 +187,7 @@ def _add_cpt_locations_to_figure(fig, cpt_data, z_min):
         # Get training locations
         train_locs = cpt_data[cpt_data['is_train'] == True].groupby('cpt_id')[['x_coord', 'y_coord']].first()
         if len(train_locs) > 0:
+            print(f"Aggiunta di {len(train_locs)} posizioni CPT di training")
             fig.add_trace(go.Scatter3d(
                 x=train_locs['x_coord'],
                 y=train_locs['y_coord'],
@@ -190,10 +201,13 @@ def _add_cpt_locations_to_figure(fig, cpt_data, z_min):
                 text=train_locs.index,
                 name='Training CPT Locations'
             ))
+        else:
+            print("Nessuna posizione CPT di training trovata")
         
         # Get testing locations
         test_locs = cpt_data[cpt_data['is_train'] == False].groupby('cpt_id')[['x_coord', 'y_coord']].first()
         if len(test_locs) > 0:
+            print(f"Aggiunta di {len(test_locs)} posizioni CPT di testing")
             fig.add_trace(go.Scatter3d(
                 x=test_locs['x_coord'],
                 y=test_locs['y_coord'],
@@ -207,9 +221,12 @@ def _add_cpt_locations_to_figure(fig, cpt_data, z_min):
                 text=test_locs.index,
                 name='Testing CPT Locations'
             ))
+        else:
+            print("Nessuna posizione CPT di testing trovata")
     else:
         # Original behavior without train/test distinction
         cpt_locations = cpt_data.groupby('cpt_id')[['x_coord', 'y_coord']].first()
+        print(f"Aggiunta di {len(cpt_locations)} posizioni CPT (senza distinzione train/test)")
         fig.add_trace(go.Scatter3d(
             x=cpt_locations['x_coord'],
             y=cpt_locations['y_coord'],
@@ -377,6 +394,9 @@ def visualize_compare_3d_models(cpt_data, ml_model_data, real_model_data,
     plotly.graph_objects.Figure
         Interactive comparison visualization
     """
+    # Stampa informazioni di debug sulle coordinate CPT
+    print_cpt_coordinates_info(cpt_data)
+    
     print("Debug: ml_model_data keys =", ml_model_data.keys())
     print("Debug: real_model_data keys =", real_model_data.keys())
     
@@ -554,43 +574,190 @@ def _add_cpt_locations_to_comparative_figure(fig, cpt_data, z_min_ml, z_min_real
     z_min_real : float
         Minimum Z value for real model subplot
     """
-    # Get CPT locations - garantire che prendiamo le coordinate originali
-    cpt_locations = cpt_data.groupby('cpt_id')[['x_coord', 'y_coord']].first()
-    
-    # Stampa le posizioni CPT per debug
-    print("CPT Locations in visualizzazione:")
-    print(cpt_locations)
-    
-    # We'll use the same z_min for both plots to ensure consistency
+    # Scegliamo lo stesso z_min per entrambi i grafici per coerenza
     z_min = min(z_min_ml, z_min_real)
     
-    # Add to ML model subplot - primo subplot (colonna 1)
-    fig.add_trace(go.Scatter3d(
-        x=cpt_locations['x_coord'],
-        y=cpt_locations['y_coord'],
-        z=[z_min for _ in range(len(cpt_locations))],  # Place at surface
-        mode='markers',
-        marker=dict(
-            size=8,
-            color='black',
-            symbol='circle'
-        ),
-        text=cpt_locations.index,
-        name='CPT Locations'
-    ), row=1, col=1)
+    # Verifichiamo se il dataset contiene informazioni train/test
+    if 'is_train' in cpt_data.columns:
+        # Raggruppiamo le coordinate per CPT ID e separiamo training e testing
+        train_locations = cpt_data[cpt_data['is_train'] == True].groupby('cpt_id')[['x_coord', 'y_coord']].first()
+        test_locations = cpt_data[cpt_data['is_train'] == False].groupby('cpt_id')[['x_coord', 'y_coord']].first()
+        
+        print(f"Posizioni CPT di training trovate: {len(train_locations)}")
+        print(f"Posizioni CPT di testing trovate: {len(test_locations)}")
+        
+        # Aggiungi posizioni CPT di training al primo subplot (ML model)
+        if len(train_locations) > 0:
+            fig.add_trace(go.Scatter3d(
+                x=train_locations['x_coord'],
+                y=train_locations['y_coord'],
+                z=[z_min for _ in range(len(train_locations))],
+                mode='markers',
+                marker=dict(
+                    size=8,
+                    color='blue',
+                    symbol='circle'
+                ),
+                text=train_locations.index,
+                name='Training CPTs'
+            ), row=1, col=1)
+        
+        # Aggiungi posizioni CPT di testing al primo subplot (ML model)
+        if len(test_locations) > 0:
+            fig.add_trace(go.Scatter3d(
+                x=test_locations['x_coord'],
+                y=test_locations['y_coord'],
+                z=[z_min for _ in range(len(test_locations))],
+                mode='markers',
+                marker=dict(
+                    size=8,
+                    color='red',
+                    symbol='diamond'
+                ),
+                text=test_locations.index,
+                name='Testing CPTs'
+            ), row=1, col=1)
+        
+        # Aggiungi posizioni CPT di training al secondo subplot (Real model)
+        if len(train_locations) > 0:
+            fig.add_trace(go.Scatter3d(
+                x=train_locations['x_coord'],
+                y=train_locations['y_coord'],
+                z=[z_min for _ in range(len(train_locations))],
+                mode='markers',
+                marker=dict(
+                    size=8,
+                    color='blue',
+                    symbol='circle'
+                ),
+                text=train_locations.index,
+                name='Training CPTs',
+                showlegend=False  # Non mostrare una seconda voce di legenda
+            ), row=1, col=2)
+        
+        # Aggiungi posizioni CPT di testing al secondo subplot (Real model)
+        if len(test_locations) > 0:
+            fig.add_trace(go.Scatter3d(
+                x=test_locations['x_coord'],
+                y=test_locations['y_coord'],
+                z=[z_min for _ in range(len(test_locations))],
+                mode='markers',
+                marker=dict(
+                    size=8,
+                    color='red',
+                    symbol='diamond'
+                ),
+                text=test_locations.index,
+                name='Testing CPTs',
+                showlegend=False  # Non mostrare una seconda voce di legenda
+            ), row=1, col=2)
+    else:
+        # Comportamento originale se non ci sono informazioni train/test
+        cpt_locations = cpt_data.groupby('cpt_id')[['x_coord', 'y_coord']].first()
+        print(f"Posizioni CPT totali trovate: {len(cpt_locations)}")
+        
+        # Aggiungi tutte le posizioni CPT al primo subplot
+        fig.add_trace(go.Scatter3d(
+            x=cpt_locations['x_coord'],
+            y=cpt_locations['y_coord'],
+            z=[z_min for _ in range(len(cpt_locations))],
+            mode='markers',
+            marker=dict(
+                size=8,
+                color='black',
+                symbol='circle'
+            ),
+            text=cpt_locations.index,
+            name='CPT Locations'
+        ), row=1, col=1)
+        
+        # Aggiungi tutte le posizioni CPT al secondo subplot
+        fig.add_trace(go.Scatter3d(
+            x=cpt_locations['x_coord'],
+            y=cpt_locations['y_coord'],
+            z=[z_min for _ in range(len(cpt_locations))],
+            mode='markers',
+            marker=dict(
+                size=8,
+                color='black',
+                symbol='circle'
+            ),
+            text=cpt_locations.index,
+            name='CPT Locations',
+            showlegend=True
+        ), row=1, col=2)
+        
+
+def print_cpt_coordinates_info(cpt_data):
+    """
+    Stampa informazioni di debug sulle coordinate CPT presenti nei dati
     
-    # Add to real model subplot - secondo subplot (colonna 2)
-    fig.add_trace(go.Scatter3d(
-        x=cpt_locations['x_coord'],
-        y=cpt_locations['y_coord'],
-        z=[z_min for _ in range(len(cpt_locations))],  # Place at surface
-        mode='markers',
-        marker=dict(
-            size=8,
-            color='black',
-            symbol='circle'
-        ),
-        text=cpt_locations.index,
-        name='CPT Locations',
-        showlegend=False  # Don't show duplicate legend entry
-    ), row=1, col=2)
+    Parameters:
+    -----------
+    cpt_data : pandas.DataFrame
+        DataFrame contenente i dati CPT
+    """
+    print("\n===== DEBUG INFO: COORDINATE CPT =====")
+    
+    # Verifica se ci sono dati
+    if cpt_data is None or len(cpt_data) == 0:
+        print("ERRORE: Nessun dato CPT disponibile")
+        return
+    
+    # Verifica la presenza delle colonne necessarie
+    required_cols = ['cpt_id', 'x_coord', 'y_coord']
+    missing_cols = [col for col in required_cols if col not in cpt_data.columns]
+    if missing_cols:
+        print(f"ERRORE: Mancano le seguenti colonne: {missing_cols}")
+        print(f"Colonne disponibili: {cpt_data.columns.tolist()}")
+        return
+    
+    # Estrai coordinate uniche per CPT
+    unique_cpt_coords = cpt_data.groupby('cpt_id')[['x_coord', 'y_coord']].first().reset_index()
+    
+    # Stampa il numero totale di CPT
+    print(f"Numero totale di CPT: {len(unique_cpt_coords)}")
+    
+    # Verifica se ci sono informazioni di training/testing
+    if 'is_train' in cpt_data.columns:
+        train_cpts = cpt_data[cpt_data['is_train'] == True]['cpt_id'].unique()
+        test_cpts = cpt_data[cpt_data['is_train'] == False]['cpt_id'].unique()
+        
+        print(f"CPT di training: {len(train_cpts)} ({', '.join(train_cpts[:5])}{'...' if len(train_cpts) > 5 else ''})")
+        print(f"CPT di testing: {len(test_cpts)} ({', '.join(test_cpts[:5])}{'...' if len(test_cpts) > 5 else ''})")
+        
+        # Visualizza le coordinate per i primi 3 CPT di training
+        print("\nCoordinate primi 3 CPT di training:")
+        for cpt_id in train_cpts[:3]:
+            coords = cpt_data[cpt_data['cpt_id'] == cpt_id][['x_coord', 'y_coord']].iloc[0]
+            print(f"  CPT {cpt_id}: (x={coords['x_coord']}, y={coords['y_coord']})")
+        
+        # Visualizza le coordinate per i primi 3 CPT di testing
+        print("\nCoordinate primi 3 CPT di testing:")
+        for cpt_id in test_cpts[:3]:
+            coords = cpt_data[cpt_data['cpt_id'] == cpt_id][['x_coord', 'y_coord']].iloc[0]
+            print(f"  CPT {cpt_id}: (x={coords['x_coord']}, y={coords['y_coord']})")
+    else:
+        # Se non c'è distinzione train/test
+        all_cpts = cpt_data['cpt_id'].unique()
+        print(f"CPT totali (senza distinzione train/test): {len(all_cpts)}")
+        
+        # Visualizza le coordinate per i primi 5 CPT
+        print("\nCoordinate primi 5 CPT:")
+        for cpt_id in all_cpts[:5]:
+            coords = cpt_data[cpt_data['cpt_id'] == cpt_id][['x_coord', 'y_coord']].iloc[0]
+            print(f"  CPT {cpt_id}: (x={coords['x_coord']}, y={coords['y_coord']})")
+    
+    # Verifica se ci sono CPT con coordinate duplicate
+    coords_count = unique_cpt_coords.groupby(['x_coord', 'y_coord']).size()
+    duplicate_coords = coords_count[coords_count > 1].reset_index()
+    
+    if len(duplicate_coords) > 0:
+        print("\nATTENZIONE: Rilevate coordinate duplicate per CPT diversi:")
+        for _, row in duplicate_coords.iterrows():
+            x, y = row['x_coord'], row['y_coord']
+            affected_cpts = unique_cpt_coords[(unique_cpt_coords['x_coord'] == x) & 
+                                            (unique_cpt_coords['y_coord'] == y)]['cpt_id'].tolist()
+            print(f"  Coordinate ({x}, {y}) utilizzate da: {', '.join(affected_cpts)}")
+    
+    print("======================================\n")

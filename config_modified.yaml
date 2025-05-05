@@ -29,6 +29,7 @@ interpolation:
   z_resolution_factor: 0.5
 paths:
   data: data/CPT_*.csv
+  locations: location.csv
   model_output: cpt_soil_model.pkl
   output_dir: output/
 soil_classification:
