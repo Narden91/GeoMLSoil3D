@@ -161,15 +161,18 @@ def _plot_soil_classification(ax, soil_data, depth_col, soil_col, title):
     """
     # Add some jitter to soil type for better visualization
     jitter = np.random.normal(0, 0.1, size=len(soil_data))
-    soil_data['soil_jitter'] = soil_data[soil_col] + jitter
+    
+    # Creiamo una copia esplicita del DataFrame per evitare il SettingWithCopyWarning
+    soil_data_copy = soil_data.copy()
+    soil_data_copy['soil_jitter'] = soil_data_copy[soil_col] + jitter
     
     # Create a colormap with distinct colors for each soil type
-    unique_soil_types = sorted(soil_data[soil_col].unique())
+    unique_soil_types = sorted(soil_data_copy[soil_col].unique())
     cmap = plt.cm.get_cmap('viridis', len(unique_soil_types))
     
     # Plot soil types with colors
-    sc = ax.scatter(soil_data['soil_jitter'], soil_data[depth_col], 
-                   c=soil_data[soil_col], cmap=cmap, vmin=min(unique_soil_types)-0.5, 
+    sc = ax.scatter(soil_data_copy['soil_jitter'], soil_data_copy[depth_col], 
+                   c=soil_data_copy[soil_col], cmap=cmap, vmin=min(unique_soil_types)-0.5, 
                    vmax=max(unique_soil_types)+0.5)
     
     # Create custom tick labels with abbreviations
