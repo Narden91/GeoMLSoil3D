@@ -14,6 +14,13 @@ debug:
   save_logs: false  # Salvare i log su file
   log_file: "geoml_soil_3d.log"  # Nome file di log
 
+# Impostazioni analisi fondamenta
+foundation_analysis:
+  enabled: true  # Abilita l'analisi delle fondamenta
+  max_depth: 3.0  # Profondità massima da analizzare (m)
+  foundation_depth: 1.5  # Profondità tipica delle fondazioni (m)
+  visualize_foundation: true  # Mostra il grafico della composizione delle fondamenta
+
 # Impostazioni di visualizzazione
 display:
   show_soil_legend: false  # Mostra la legenda dei tipi di suolo all'inizio

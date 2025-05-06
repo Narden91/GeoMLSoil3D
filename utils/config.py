@@ -100,6 +100,22 @@ def update_config_from_args(config, args):
             config['display'] = {}
         config['display']['cross_section_interactive'] = True
     
+    # Parametri per l'analisi delle fondamenta
+    if args.analyze_foundation is not None:
+        if 'foundation_analysis' not in config:
+            config['foundation_analysis'] = {}
+        config['foundation_analysis']['enabled'] = args.analyze_foundation
+    
+    if args.foundation_depth is not None:
+        if 'foundation_analysis' not in config:
+            config['foundation_analysis'] = {}
+        config['foundation_analysis']['foundation_depth'] = args.foundation_depth
+    
+    if args.visualize_foundation is not None:
+        if 'foundation_analysis' not in config:
+            config['foundation_analysis'] = {}
+        config['foundation_analysis']['visualize_foundation'] = args.visualize_foundation
+    
     return config
 
 
@@ -119,12 +135,21 @@ def create_argument_parser():
     parser.add_argument('--use-test-in-3d', action='store_true', help='Include test data in 3D visualization')
     parser.add_argument('--locations', type=str, help='Path to CSV file with CPT coordinates')
     parser.add_argument('--use-all-features', action='store_true', help='Use all available numerical features for the model')
-    # Nuovi parametri
+    
+    # Parametri per visualizzazioni
     parser.add_argument('--cross-sections', action='store_true', help='Create cross-section visualizations')
     parser.add_argument('--cross-section-axis', type=str, choices=['x', 'y', 'z'], 
                       help='Axis for cross-section (x, y, or z)')
     parser.add_argument('--interactive-cross-section', action='store_true', 
                       help='Use interactive interface for cross-sections')
+    
+    # Parametri per l'analisi delle fondamenta
+    parser.add_argument('--analyze-foundation', type=bool, default=None,
+                       help='Enable foundation analysis and construction technique recommendations')
+    parser.add_argument('--foundation-depth', type=float,
+                       help='Typical foundation depth to analyze (meters)')
+    parser.add_argument('--visualize-foundation', type=bool, default=None,
+                       help='Show foundation composition visualization')
     
     return parser
 

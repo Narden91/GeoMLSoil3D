@@ -21,6 +21,11 @@ display:
   show_soil_abbreviations: false
   show_soil_distribution: true
   show_soil_legend: false
+foundation_analysis:
+  enabled: true
+  foundation_depth: 1.5
+  max_depth: 3.0
+  visualize_foundation: true
 interpolation:
   cross_section_axis: x
   cross_section_tolerance: 1.0

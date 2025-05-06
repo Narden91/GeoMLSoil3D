@@ -3,6 +3,7 @@ import sys
 import traceback
 
 from core.model import CPT_3D_SoilModel
+from core.foundation_analysis import analyze_foundation_compatibility
 from utils.soil_types import SoilTypeManager
 from utils.config import (
     load_config,
@@ -11,6 +12,95 @@ from utils.config import (
     create_argument_parser
 )
 from visualization.plots import plot_soil_legend
+
+
+def try_alternative_visualization(framework, interpolation, display):
+    """
+    Try alternative visualization methods if primary method fails
+    
+    Parameters:
+    -----------
+    framework : CPT_3D_SoilModel
+        Framework instance
+    interpolation : dict
+        Interpolation configuration
+    display : dict
+        Display configuration
+    """
+    print("\nTrying alternative visualization method...")
+    resolution = interpolation.get('resolution', 5)
+    
+    try:
+        # Try using nearest neighbor interpolation
+        interpolation_data = framework.create_3d_interpolation(
+            resolution=resolution,
+            use_test_data=True,
+            method='nearest'
+        )
+        
+        # Visualize model
+        framework.visualize_3d_model(
+            interpolation_data=interpolation_data,
+            interactive=display.get('interactive_visualization', True),
+            use_test_data=True
+        )
+    except Exception as e:
+        print(f"Alternative visualization also failed: {e}")
+        print("Consider visualizing only CPT profiles or cross-sections.")
+
+
+def run_foundation_analysis(framework, config):
+    """
+    Esegue l'analisi delle fondamenta e delle tecniche costruttive ottimali
+    
+    Parameters:
+    -----------
+    framework : CPT_3D_SoilModel
+        Framework instance con i dati e i modelli 3D
+    config : dict
+        Configurazione per l'analisi delle fondamenta
+    """
+    print("\nAnalisi delle fondamenta e tecniche costruttive ottimali...")
+    
+    # Verifica che il modello 3D sia stato creato
+    if not hasattr(framework, 'ml_model_data') or framework.ml_model_data is None:
+        print("Creazione modello 3D per l'analisi delle fondamenta...")
+        try:
+            # Crea il modello 3D se non esiste
+            ml_model_data = framework._create_soil_model('predicted_soil', 5, True)
+            framework.ml_model_data = ml_model_data
+        except Exception as e:
+            print(f"Errore nella creazione del modello 3D: {e}")
+            print("Utilizzo dei dati CPT senza modello 3D")
+    
+    # Ottieni la profondità massima di analisi
+    max_depth = config.get('max_depth', 3.0)
+    
+    # Esegui l'analisi
+    analyzer = analyze_foundation_compatibility(
+        framework.cpt_data, 
+        framework.ml_model_data if hasattr(framework, 'ml_model_data') else None,
+        max_depth=max_depth
+    )
+    
+    # Visualizza le raccomandazioni generali
+    analyzer.visualize_recommendations()
+    
+    # Visualizza solo il grafico delle fondamenta se richiesto
+    if config.get('visualize_foundation', True):
+        print("\nVisualizzazione della composizione delle fondamenta...")
+        # Il metodo visualize_foundation ora include plt.show() 
+        # per assicurarsi che il grafico venga visualizzato
+        analyzer.visualize_foundation()
+    
+    # Salva i risultati nel framework per potenziale uso futuro
+    framework.foundation_analyzer = analyzer
+    
+    # Assicura che i grafici siano mostrati
+    import matplotlib.pyplot as plt
+    plt.show()
+    
+    return framework
 
 
 def main(config_path="config.yaml"):
@@ -37,6 +127,7 @@ def main(config_path="config.yaml"):
     data_loading = config.get('data_loading', {})
     soil_classification = config.get('soil_classification', {})
     interpolation = config.get('interpolation', {})
+    foundation_analysis_cfg = config.get('foundation_analysis', {})
     
     # Create framework instance
     framework = CPT_3D_SoilModel()
@@ -69,6 +160,13 @@ def main(config_path="config.yaml"):
                 framework, 
                 interpolation, 
                 display
+            )
+            
+        # Analyze foundation compatibility if enabled
+        if foundation_analysis_cfg.get('enabled', False):
+            run_foundation_analysis(
+                framework,
+                foundation_analysis_cfg
             )
         
         # Save model
