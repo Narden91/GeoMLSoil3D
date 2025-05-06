@@ -242,20 +242,36 @@ def _create_and_visualize_models(framework, interpolation, display):
             # Default axis è 'x'
             axis = interpolation.get('cross_section_axis', 'x')
             
+            print(f"Using axis: {axis}")
+            print(f"Test data inclusion: {display.get('include_test_in_3d', False)}")
+            
+            # Check if we have the required model data
+            if not hasattr(framework, 'ml_model_data') or not hasattr(framework, 'real_model_data'):
+                print("Warning: Missing model data for cross-section visualization")
+                print(f"Has ml_model_data: {hasattr(framework, 'ml_model_data')}")
+                print(f"Has real_model_data: {hasattr(framework, 'real_model_data')}")
+            
             # Crea la visualizzazione interattiva delle sezioni
+            print("Attempting to create interactive cross-section explorer...")
             framework.create_interactive_cross_section_explorer(
                 use_test_data=display.get('include_test_in_3d', False)
             )
             
             # Crea anche una sezione statica per il valore centrale
+            print("Attempting to create static cross-section...")
             framework.visualize_cross_sections(
                 axis=axis,
                 use_test_data=display.get('include_test_in_3d', False)
             )
+            print("Cross-section visualization completed successfully")
         except Exception as e:
-            print(f"Cross-section visualization failed: {e}")
+            print(f"Cross-section visualization failed with error: {e}")
+            print("Error details:")
             traceback.print_exc()
-
+            print("\nChecking data structure for debugging:")
+            if hasattr(framework, 'cpt_data'):
+                print(f"CPT data columns: {framework.cpt_data.columns.tolist()}")
+                print(f"CPT data has {framework.cpt_data['cpt_id'].nunique()} unique CPT IDs")
 
 def _create_standard_visualization(framework, interpolation, display):
     """
