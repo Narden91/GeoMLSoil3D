@@ -2,10 +2,7 @@ import os
 import sys
 import traceback
 
-# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 from core.model import CPT_3D_SoilModel
-from utils.helpers import debug_cpt_files
 from utils.soil_types import SoilTypeManager
 from utils.config import (
     load_config,
@@ -24,6 +21,11 @@ def main(config_path="config.yaml"):
     -----------
     config_path : str
         Path to the configuration file
+        
+    Returns:
+    --------
+    CPT_3D_SoilModel
+        Initialized and trained framework instance
     """
     # Load configuration
     config = load_config(config_path)
@@ -36,85 +38,87 @@ def main(config_path="config.yaml"):
     soil_classification = config.get('soil_classification', {})
     interpolation = config.get('interpolation', {})
     
-    # Get paths from config
-    data_path = paths.get('data', "data/CPT_*.csv")
-    model_output = paths.get('model_output', "cpt_soil_model.pkl")
-    
     # Create framework instance
     framework = CPT_3D_SoilModel()
     
     # Show soil type legend if requested
     if display.get('show_soil_legend', True):
-        _display_soil_legend()
+        plot_soil_legend()
     
-    # Run preliminary debug on CPT files if enabled
-    if debug_cfg.get('enabled', True):
-        debug_cpt_files(data_path)
-    
-    # Load data and perform data exploration
-    framework = _load_and_explore_data(framework, data_path, data_loading, display, 
-                                        soil_classification, debug_cfg, paths)
-    
-    # Train and evaluate soil classification model if enabled
-    if soil_classification.get('enabled', True):
-        framework = _train_and_evaluate_model(framework, soil_classification, display)
-    
-    # Create and visualize 3D models if enabled
-    if interpolation.get('enabled', True):
-        _create_and_visualize_models(framework, interpolation, display)
-    
-    # Save model for future use
-    framework.save_model(model_output)
-    
-    # Show soil abbreviations if requested
-    if display.get('show_soil_abbreviations', True):
-        _display_soil_abbreviations(framework)
+    try:
+        # Load and explore data
+        framework = run_data_loading_phase(
+            framework, 
+            paths, 
+            data_loading, 
+            display, 
+            soil_classification
+        )
+        
+        # Train and evaluate soil classification model if enabled
+        if soil_classification.get('enabled', True):
+            framework = run_training_phase(
+                framework, 
+                soil_classification, 
+                display
+            )
+        
+        # Create and visualize 3D models if enabled
+        if interpolation.get('enabled', True):
+            run_visualization_phase(
+                framework, 
+                interpolation, 
+                display
+            )
+        
+        # Save model
+        model_output = paths.get('model_output', "cpt_soil_model.pkl")
+        framework.save_model(model_output)
+        
+        # Show soil abbreviations if requested
+        if display.get('show_soil_abbreviations', True):
+            display_soil_abbreviations(framework)
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        traceback.print_exc()
+        print("\nDespite the error, the framework object is being returned for manual inspection.")
     
     return framework
 
 
-def _display_soil_legend():
-    """Display soil types and their abbreviations"""
-    print("Tipi di suolo e relative abbreviazioni:")
-    soil_types = SoilTypeManager.get_all_types()
-    for soil_id, soil_info in soil_types.items():
-        print(f"{soil_id}: {soil_info['abbr']} - {soil_info['desc']}")
-    
-    # Visualize the legend
-    plot_soil_legend()
-
-
-def _load_and_explore_data(framework, data_path, data_loading, display, soil_classification, debug_cfg, paths):
+def run_data_loading_phase(framework, paths, data_loading, display, soil_classification):
     """
-    Load data and perform data exploration
+    Run data loading and exploration phase
     
     Parameters:
     -----------
     framework : CPT_3D_SoilModel
-        The soil model framework
-    data_path : str
-        Path to data files
+        Framework instance
+    paths : dict
+        Paths configuration
     data_loading : dict
         Data loading configuration
     display : dict
         Display configuration
     soil_classification : dict
         Soil classification configuration
-    debug_cfg : dict
-        Debug configuration
-    paths : dict
-        Paths configuration
         
     Returns:
     --------
     CPT_3D_SoilModel
-        Updated framework
+        Updated framework instance
     """
-    # Load data with train/test split
+    # Get data loading parameters
+    data_path = paths.get('data', "data/CPT_*.csv")
     test_size = soil_classification.get('test_size', 0.2)
     random_state = soil_classification.get('random_state', 42)
     locations_path = paths.get('locations', 'location.csv')
     
+    print(f"Loading data from: {data_path}")
+    print(f"Test size: {test_size}, Random state: {random_state}")
+    
+    # Load data
     train_data, test_data = framework.load_data(
         data_path,
         x_coord_col=data_loading.get('x_coord_col'), 
@@ -124,8 +128,9 @@ def _load_and_explore_data(framework, data_path, data_loading, display, soil_cla
         locations_path=locations_path
     )
     
-    # Check for sufficient unique coordinates
-    _check_coordinates(framework, debug_cfg)
+    # Check dataset sizes
+    print(f"Loaded {len(train_data)} training records and {len(test_data)} test records")
+    check_data_quality(framework)
     
     # Explore data
     framework.explore_data(
@@ -138,39 +143,42 @@ def _load_and_explore_data(framework, data_path, data_loading, display, soil_cla
     return framework
 
 
-def _check_coordinates(framework, debug_cfg):
+def check_data_quality(framework):
     """
-    Check for sufficient unique coordinates
+    Check data quality and provide warnings if needed
     
     Parameters:
     -----------
     framework : CPT_3D_SoilModel
-        The soil model framework
-    debug_cfg : dict
-        Debug configuration
+        Framework with loaded data
     """
+    # Check for sufficient unique coordinates
     x_unique_train = framework.train_data['x_coord'].nunique()
     y_unique_train = framework.train_data['y_coord'].nunique()
     x_unique_test = framework.test_data['x_coord'].nunique()
     y_unique_test = framework.test_data['y_coord'].nunique()
     
-    if debug_cfg.get('verbose', True):
-        print(f"Training dataset has {x_unique_train} unique x-coordinates and {y_unique_train} unique y-coordinates")
-        print(f"Testing dataset has {x_unique_test} unique x-coordinates and {y_unique_test} unique y-coordinates")
+    print(f"Training dataset has {x_unique_train} unique x-coordinates and {y_unique_train} unique y-coordinates")
+    print(f"Testing dataset has {x_unique_test} unique x-coordinates and {y_unique_test} unique y-coordinates")
     
     if x_unique_train < 2 or y_unique_train < 2:
-        print("WARNING: Not enough unique coordinates for 3D interpolation in training data.")
+        print("\nWARNING: Not enough unique coordinates for 3D interpolation in training data.")
         print("Consider adding proper spatial coordinates to your CPT files.")
+    
+    # Check if soil data is available
+    if 'soil []' not in framework.cpt_data.columns:
+        print("\nWARNING: No soil classification column found in data.")
+        print("Soil classification needs to be computed from CPT parameters.")
 
 
-def _train_and_evaluate_model(framework, soil_classification, display):
+def run_training_phase(framework, soil_classification, display):
     """
-    Train and evaluate soil classification model
+    Run model training and evaluation phase
     
     Parameters:
     -----------
     framework : CPT_3D_SoilModel
-        The soil model framework
+        Framework instance
     soil_classification : dict
         Soil classification configuration
     display : dict
@@ -179,43 +187,42 @@ def _train_and_evaluate_model(framework, soil_classification, display):
     Returns:
     --------
     CPT_3D_SoilModel
-        Updated framework
+        Updated framework instance
     """
     model_type = soil_classification.get('model_type', 'rf')
-    validation_size = 0.1  # Use a portion of training set for internal validation
+    use_all_features = soil_classification.get('use_all_features', True)
     random_state = soil_classification.get('random_state', 42)
-    use_all_features = soil_classification.get('use_all_features', True)  # Nuovo parametro
     
-    # Train soil classification model
+    print(f"\nTraining soil classification model...")
+    print(f"Model type: {model_type}, Use all features: {use_all_features}")
+    
+    # Train model
     model = framework.train_soil_classification_model(
         model_type=model_type,
-        test_size=validation_size,
+        test_size=0.1,  # Small internal validation split
         random_state=random_state,
-        use_all_features=use_all_features  # Passaggio del nuovo parametro
+        use_all_features=use_all_features
     )
     
-    # Evaluate on external test set
+    # Evaluate on separate test set
+    print("\nEvaluating model on test data...")
     test_metrics = framework.evaluate_on_test_data()
     
-    # Predict soil types for all data points
+    # Predict soil types for all data
+    print("\nPredicting soil types for all data...")
     predictions = framework.predict_soil_types()
-    
-    # Display feature importance if requested
-    if display.get('plot_feature_importance', True) and hasattr(model, 'feature_importances_'):
-        from visualization.plots import plot_feature_importance
-        plot_feature_importance(model, framework.feature_columns)
     
     return framework
 
 
-def _create_and_visualize_models(framework, interpolation, display):
+def run_visualization_phase(framework, interpolation, display):
     """
-    Create and visualize 3D models with simplified Matplotlib visualizations
+    Run visualization phase for 3D models and cross-sections
     
     Parameters:
     -----------
     framework : CPT_3D_SoilModel
-        The soil model framework
+        Framework instance with trained model
     interpolation : dict
         Interpolation configuration
     display : dict
@@ -223,97 +230,95 @@ def _create_and_visualize_models(framework, interpolation, display):
     """
     resolution = interpolation.get('resolution', 5)
     
-    # Se richiesto, crea e visualizza le sezioni trasversali
+    print(f"\nCreating visualizations with resolution: {resolution}")
+    
+    # Create vertical CPT section if requested
     if display.get('cross_sections', False):
         try:
-            # 1. Visualizza sezione verticale di una CPT specifica (la più informativa)
-            print("\nCreating vertical CPT section with Matplotlib...")
+            print("\nCreating vertical CPT section...")
             framework.create_vertical_cpt_section(
                 use_test_data=display.get('include_test_in_3d', False)
             )
-            
-            # # 2. Visualizza anche una sezione orizzontale del modello
-            # print("\nCreating cross-section visualization with Matplotlib...")
-            # axis = interpolation.get('cross_section_axis', 'x')
-            # framework.visualize_cross_sections_matplotlib(
-            #     axis=axis,
-            #     use_test_data=display.get('include_test_in_3d', False)
-            # )
-            
-            # print("Cross-section visualization completed successfully")
         except Exception as e:
-            print(f"Cross-section visualization failed with error: {e}")
-            import traceback
-            traceback.print_exc()
-            print("\nChecking data structure for debugging:")
-            if hasattr(framework, 'cpt_data'):
-                print(f"CPT data columns: {framework.cpt_data.columns.tolist()}")
-                print(f"CPT data has {framework.cpt_data['cpt_id'].nunique()} unique CPT IDs")
+            print(f"Error creating vertical section: {e}")
     
-    # Create and visualize comparative 3D models if requested
+    # Create interactive cross-section explorer if requested
+    if display.get('cross_section_interactive', False):
+        try:
+            print("\nCreating interactive cross-section explorer...")
+            framework.create_interactive_cross_section_explorer(
+                use_test_data=display.get('include_test_in_3d', False)
+            )
+        except Exception as e:
+            print(f"Error creating cross-section explorer: {e}")
+    
+    # Create comparative 3D models if requested
     if display.get('interactive_visualization', True):
         try:
             print("\nCreating comparative 3D visualization...")
             framework.visualize_comparative_models(resolution=resolution)
         except Exception as e:
-            print(f"Comparative 3D visualization failed: {e}")
-            traceback.print_exc()
-            
-            print("\nFalling back to standard single model visualization...")
-            _create_standard_visualization(framework, interpolation, display)
+            print(f"Error creating comparative 3D visualization: {e}")
+            try_alternative_visualization(framework, interpolation, display)
 
-def _create_standard_visualization(framework, interpolation, display):
+
+def try_alternative_visualization(framework, interpolation, display):
     """
-    Create and visualize standard 3D model
+    Try alternative visualization methods if primary method fails
     
     Parameters:
     -----------
     framework : CPT_3D_SoilModel
-        The soil model framework
+        Framework instance
     interpolation : dict
         Interpolation configuration
     display : dict
         Display configuration
     """
+    print("\nTrying alternative visualization method...")
     resolution = interpolation.get('resolution', 5)
+    
     try:
-        method = 'nearest' if interpolation.get('try_alternative_first', True) else 'linear'
+        # Try using nearest neighbor interpolation
         interpolation_data = framework.create_3d_interpolation(
             resolution=resolution,
             use_test_data=True,
-            method=method
+            method='nearest'
         )
         
-        # Visualize standard model
+        # Visualize model
         framework.visualize_3d_model(
             interpolation_data=interpolation_data,
             interactive=display.get('interactive_visualization', True),
             use_test_data=True
         )
     except Exception as e:
-        print(f"Standard 3D visualization also failed: {e}")
-        print("Consider visualizing individual CPT profiles instead")
+        print(f"Alternative visualization also failed: {e}")
+        print("Consider visualizing only CPT profiles or cross-sections.")
 
 
-def _display_soil_abbreviations(framework):
+def display_soil_abbreviations(framework):
     """
-    Display soil abbreviations
+    Display soil abbreviations and model performance summary
     
     Parameters:
     -----------
     framework : CPT_3D_SoilModel
-        The soil model framework
+        Framework instance with trained model
     """
-    print("\nAbbreviazioni dei tipi di suolo:")
-    for soil_id in sorted(framework.cpt_data['soil []'].unique()):
-        abbr = SoilTypeManager.get_abbreviation(soil_id)
-        desc = SoilTypeManager.get_description(soil_id)
-        print(f"  {soil_id}: {abbr} - {desc}")
-    
-    # Print summary of model performance
-    if hasattr(framework, 'test_metrics'):
-        print("\nRiepilogo delle performance del modello:")
-        print(f"Accuracy complessiva sul set di test: {framework.test_metrics['overall_accuracy']:.4f}")
+    print("\nSoil type abbreviations:")
+    try:
+        for soil_id in sorted(framework.cpt_data['soil []'].unique()):
+            abbr = SoilTypeManager.get_abbreviation(soil_id)
+            desc = SoilTypeManager.get_description(soil_id)
+            print(f"  {soil_id}: {abbr} - {desc}")
+        
+        # Print summary of model performance if available
+        if hasattr(framework, 'test_metrics'):
+            print("\nModel performance summary:")
+            print(f"Overall test accuracy: {framework.test_metrics['overall_accuracy']:.4f}")
+    except Exception as e:
+        print(f"Error displaying soil abbreviations: {e}")
 
 
 if __name__ == "__main__":
@@ -329,4 +334,6 @@ if __name__ == "__main__":
     save_config(config, 'config_modified.yaml')
     
     # Run with the modified config
-    main('config_modified.yaml')
+    framework = main('config_modified.yaml')
+    
+    print("\nExecution completed. Framework object is available for inspection.")
