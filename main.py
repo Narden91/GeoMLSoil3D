@@ -210,7 +210,7 @@ def _train_and_evaluate_model(framework, soil_classification, display):
 
 def _create_and_visualize_models(framework, interpolation, display):
     """
-    Create and visualize 3D models
+    Create and visualize 3D models with simplified Matplotlib visualizations
     
     Parameters:
     -----------
@@ -223,55 +223,44 @@ def _create_and_visualize_models(framework, interpolation, display):
     """
     resolution = interpolation.get('resolution', 5)
     
-    # Create and visualize comparative 3D models
-    try:
-        print("\nCreating comparative visualization of ML predictions vs Real CPT measurements...")
-        framework.visualize_comparative_models(resolution=resolution)
-    except Exception as e:
-        print(f"Comparative 3D visualization failed: {e}")
-        traceback.print_exc()
-        
-        print("\nFalling back to standard single model visualization...")
-        # Create standard interpolation if comparative fails
-        _create_standard_visualization(framework, interpolation, display)
-    
     # Se richiesto, crea e visualizza le sezioni trasversali
     if display.get('cross_sections', False):
         try:
-            print("\nCreating cross-section visualization...")
-            # Default axis è 'x'
-            axis = interpolation.get('cross_section_axis', 'x')
-            
-            print(f"Using axis: {axis}")
-            print(f"Test data inclusion: {display.get('include_test_in_3d', False)}")
-            
-            # Check if we have the required model data
-            if not hasattr(framework, 'ml_model_data') or not hasattr(framework, 'real_model_data'):
-                print("Warning: Missing model data for cross-section visualization")
-                print(f"Has ml_model_data: {hasattr(framework, 'ml_model_data')}")
-                print(f"Has real_model_data: {hasattr(framework, 'real_model_data')}")
-            
-            # Crea la visualizzazione interattiva delle sezioni
-            print("Attempting to create interactive cross-section explorer...")
-            framework.create_interactive_cross_section_explorer(
+            # 1. Visualizza sezione verticale di una CPT specifica (la più informativa)
+            print("\nCreating vertical CPT section with Matplotlib...")
+            framework.create_vertical_cpt_section(
                 use_test_data=display.get('include_test_in_3d', False)
             )
             
-            # Crea anche una sezione statica per il valore centrale
-            print("Attempting to create static cross-section...")
-            framework.visualize_cross_sections(
-                axis=axis,
-                use_test_data=display.get('include_test_in_3d', False)
-            )
-            print("Cross-section visualization completed successfully")
+            # # 2. Visualizza anche una sezione orizzontale del modello
+            # print("\nCreating cross-section visualization with Matplotlib...")
+            # axis = interpolation.get('cross_section_axis', 'x')
+            # framework.visualize_cross_sections_matplotlib(
+            #     axis=axis,
+            #     use_test_data=display.get('include_test_in_3d', False)
+            # )
+            
+            # print("Cross-section visualization completed successfully")
         except Exception as e:
             print(f"Cross-section visualization failed with error: {e}")
-            print("Error details:")
+            import traceback
             traceback.print_exc()
             print("\nChecking data structure for debugging:")
             if hasattr(framework, 'cpt_data'):
                 print(f"CPT data columns: {framework.cpt_data.columns.tolist()}")
                 print(f"CPT data has {framework.cpt_data['cpt_id'].nunique()} unique CPT IDs")
+    
+    # Create and visualize comparative 3D models if requested
+    if display.get('interactive_visualization', True):
+        try:
+            print("\nCreating comparative 3D visualization...")
+            framework.visualize_comparative_models(resolution=resolution)
+        except Exception as e:
+            print(f"Comparative 3D visualization failed: {e}")
+            traceback.print_exc()
+            
+            print("\nFalling back to standard single model visualization...")
+            _create_standard_visualization(framework, interpolation, display)
 
 def _create_standard_visualization(framework, interpolation, display):
     """

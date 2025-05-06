@@ -209,7 +209,7 @@ def visualize_cross_section(section_data, soil_types=None, soil_colors=None,
 
 def visualize_compare_cross_sections(ml_model_data, real_model_data, 
                                    axis='x', position=None, index=None,
-                                   soil_types=None, soil_colors=None):
+                                   soil_types=None, soil_colors=None, show=True):
     """
     Visualizza e confronta sezioni trasversali di due modelli 3D
     
@@ -229,6 +229,8 @@ def visualize_compare_cross_sections(ml_model_data, real_model_data,
         Lista di tipi di suolo
     soil_colors : dict, optional
         Dizionario che mappa i tipi di suolo ai colori
+    show : bool, optional
+        Se mostrare automaticamente la figura
         
     Returns:
     --------
@@ -264,7 +266,12 @@ def visualize_compare_cross_sections(ml_model_data, real_model_data,
         height=600
     )
     
+    # Mostra la figura se richiesto
+    if show:
+        fig.show()
+    
     return fig
+
 
 
 def _add_section_to_subplot(fig, section_data, colorscale, tickvals, ticktext, row, col, show_colorbar):
@@ -330,7 +337,7 @@ def _add_section_to_subplot(fig, section_data, colorscale, tickvals, ticktext, r
 
 
 def create_interactive_cross_section_ui(cpt_data, ml_model_data, real_model_data, 
-                                       soil_types=None, soil_colors=None):
+                                       soil_types=None, soil_colors=None, show=True):
     """
     Crea un'interfaccia interattiva per esplorare le sezioni trasversali
     
@@ -346,6 +353,8 @@ def create_interactive_cross_section_ui(cpt_data, ml_model_data, real_model_data
         Lista di tipi di suolo
     soil_colors : dict, optional
         Dizionario che mappa i tipi di suolo ai colori
+    show : bool, optional
+        Se mostrare automaticamente la figura
         
     Returns:
     --------
@@ -376,7 +385,8 @@ def create_interactive_cross_section_ui(cpt_data, ml_model_data, real_model_data
     fig = visualize_compare_cross_sections(
         ml_model_data, real_model_data, 
         axis='x', position=initial_x,
-        soil_types=soil_types, soil_colors=soil_colors
+        soil_types=soil_types, soil_colors=soil_colors,
+        show=False  # Non mostrare qui per evitare duplicazioni
     )
     
     # Aggiungi CPT locations che intersecano questa sezione
@@ -499,9 +509,9 @@ def create_interactive_cross_section_ui(cpt_data, ml_model_data, real_model_data
         height=700  # Aumenta l'altezza per fare spazio agli slider
     )
     
-    # Nota: In una vera applicazione web, dovresti utilizzare callback Plotly/Dash
-    # per aggiornare dinamicamente le sezioni in base ai valori degli slider e
-    # ai pulsanti selezionati
+    # Mostra la figura se richiesto
+    if show:
+        fig.show()
     
     return fig
 
