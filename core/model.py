@@ -4,7 +4,7 @@ import joblib
 
 from core.loader import load_cpt_files, split_cpt_files
 from core.classifier import train_soil_model, predict_soil_types
-from core.interpolator import create_3d_interpolation, create_3d_interpolation_alternative
+from core.interpolator import create_3d_interpolation
 from utils.soil_types import SoilTypeManager
 from utils.helpers import get_compatible_colormap
 from visualization.plots import (
@@ -14,6 +14,10 @@ from visualization.plots import (
 )
 from visualization.model_3d import visualize_3d_model, visualize_compare_3d_models
 from visualization.evaluation import plot_test_vs_predicted
+from visualization.cross_sections import (
+    create_interactive_cross_section_ui,
+    visualize_compare_cross_sections
+)
 
 
 class CPT_3D_SoilModel:
@@ -32,6 +36,8 @@ class CPT_3D_SoilModel:
         self.soil_types = None
         self.soil_colors = None
         self.interpolator = None
+        self.ml_model_data = None
+        self.real_model_data = None
         self.soil_manager = SoilTypeManager()
     
     def load_data(self, file_pattern, x_coord_col=None, y_coord_col=None, test_size=0.2, random_state=42,
@@ -473,22 +479,12 @@ class CPT_3D_SoilModel:
         # Seleziona quali dati utilizzare
         data_to_use = self.cpt_data if use_test_data else self.train_data
         
-        # Crea il modello ML (basato sulle predizioni)
-        ml_model_data = self._create_soil_model('predicted_soil', resolution=5, use_test_data=use_test_data)
-        
-        # Crea il modello geotecnico (basato sui dati reali)
-        real_model_data = self._create_soil_model('soil []', resolution=5, use_test_data=use_test_data)
-        
-        # Memorizza i modelli come attributi per garantire che siano disponibili per altre funzioni
-        self.ml_model_data = ml_model_data
-        self.real_model_data = real_model_data
-        
-        # Importa le funzioni di visualizzazione
-        from visualization.cross_sections import visualize_compare_cross_sections
+        # Crea il modello ML (basato sulle predizioni) e il modello geotecnico (basato sui dati reali)
+        self._create_soil_models(use_test_data)
         
         # Crea la visualizzazione comparativa (senza mostrarla automaticamente)
         fig = visualize_compare_cross_sections(
-            ml_model_data, real_model_data, 
+            self.ml_model_data, self.real_model_data, 
             axis=axis, position=position, index=index,
             soil_types=self.soil_types, soil_colors=self.soil_colors,
             show=False  # Non mostrare automaticamente
@@ -496,272 +492,6 @@ class CPT_3D_SoilModel:
         
         return fig
 
-    def visualize_cross_sections_matplotlib(self, axis='x', position=None, index=None, use_test_data=True):
-        """
-        Visualizza sezioni trasversali del modello usando Matplotlib
-        
-        Parameters:
-        -----------
-        axis : str
-            Asse lungo il quale estrarre la sezione ('x', 'y' o 'z')
-        position : float, optional
-            Posizione esatta dove estrarre la sezione lungo l'asse specificato
-        index : int, optional
-            Indice della slice da estrarre (alternativa a position)
-        use_test_data : bool
-            Se includere i dati di test nella visualizzazione
-        """
-        if self.cpt_data is None:
-            raise ValueError("Nessun dato caricato. Chiama load_data() prima.")
-        
-        # Seleziona quali dati utilizzare
-        data_to_use = self.cpt_data if use_test_data else self.train_data
-        
-        # Crea il modello ML (basato sulle predizioni)
-        ml_model_data = self._create_soil_model('predicted_soil', resolution=5, use_test_data=use_test_data)
-        
-        # Crea il modello geotecnico (basato sui dati reali)
-        real_model_data = self._create_soil_model('soil []', resolution=5, use_test_data=use_test_data)
-        
-        # Memorizza i modelli come attributi per garantire che siano disponibili per altre funzioni
-        self.ml_model_data = ml_model_data
-        self.real_model_data = real_model_data
-        
-        # Estrai le sezioni
-        ml_section = self._extract_cross_section(ml_model_data, axis, position, index)
-        real_section = self._extract_cross_section(real_model_data, axis, position, index)
-        
-        # Crea la visualizzazione con matplotlib
-        import matplotlib.pyplot as plt
-        import numpy as np
-        
-        # Crea una figura con due subplot affiancati
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
-        
-        # Estrai i dati dalla sezione
-        values_ml = ml_section['values']
-        values_real = real_section['values']
-        coord1 = ml_section['coord1']
-        coord2 = ml_section['coord2']
-        
-        # Determina il titolo in base all'asse
-        if axis.lower() == 'x':
-            title = f"Sezione YZ a X = {ml_section['section_position']:.2f}m"
-            xlabel = "Y Coordinate (m)"
-            ylabel = "Profondità (m)"
-        elif axis.lower() == 'y':
-            title = f"Sezione XZ a Y = {ml_section['section_position']:.2f}m"
-            xlabel = "X Coordinate (m)"
-            ylabel = "Profondità (m)"
-        else:
-            title = f"Sezione XY a profondità = {ml_section['section_position']:.2f}m"
-            xlabel = "X Coordinate (m)"
-            ylabel = "Y Coordinate (m)"
-        
-        # Plot delle sezioni come immagini a colori
-        im1 = ax1.imshow(values_ml, extent=[coord1.min(), coord1.max(), coord2.max(), coord2.min()], 
-                        aspect='auto', cmap='viridis')
-        im2 = ax2.imshow(values_real, extent=[coord1.min(), coord1.max(), coord2.max(), coord2.min()], 
-                        aspect='auto', cmap='viridis')
-        
-        # Aggiungi le posizioni CPT se l'asse non è z
-        if 'is_train' in data_to_use.columns and axis.lower() != 'z':
-            # Ottieni le posizioni CPT
-            cpt_locations = data_to_use.groupby('cpt_id')[['x_coord', 'y_coord']].first()
-            
-            # Filtra le CPT che sono vicine alla sezione
-            section_pos = ml_section['section_position']
-            tolerance = 2.0  # Metri
-            
-            if axis.lower() == 'x':
-                # Sezione YZ - Cerchiamo CPT con x_coord simile
-                nearby_cpts = cpt_locations[np.abs(cpt_locations['x_coord'] - section_pos) <= tolerance]
-                # Plottiamo le CPT di training
-                train_cpts = nearby_cpts[data_to_use.groupby('cpt_id')['is_train'].first()]
-                if len(train_cpts) > 0:
-                    ax1.scatter(train_cpts['y_coord'], np.zeros_like(train_cpts['y_coord']), 
-                            color='blue', marker='^', s=100, label='Training CPTs')
-                    ax2.scatter(train_cpts['y_coord'], np.zeros_like(train_cpts['y_coord']), 
-                            color='blue', marker='^', s=100, label='Training CPTs')
-                
-                # Plottiamo le CPT di testing
-                test_cpts = nearby_cpts[~data_to_use.groupby('cpt_id')['is_train'].first()]
-                if len(test_cpts) > 0:
-                    ax1.scatter(test_cpts['y_coord'], np.zeros_like(test_cpts['y_coord']), 
-                            color='red', marker='o', s=100, label='Testing CPTs')
-                    ax2.scatter(test_cpts['y_coord'], np.zeros_like(test_cpts['y_coord']), 
-                            color='red', marker='o', s=100, label='Testing CPTs')
-            
-            elif axis.lower() == 'y':
-                # Sezione XZ - Cerchiamo CPT con y_coord simile
-                nearby_cpts = cpt_locations[np.abs(cpt_locations['y_coord'] - section_pos) <= tolerance]
-                # Plottiamo le CPT di training
-                train_cpts = nearby_cpts[data_to_use.groupby('cpt_id')['is_train'].first()]
-                if len(train_cpts) > 0:
-                    ax1.scatter(train_cpts['x_coord'], np.zeros_like(train_cpts['x_coord']), 
-                            color='blue', marker='^', s=100, label='Training CPTs')
-                    ax2.scatter(train_cpts['x_coord'], np.zeros_like(train_cpts['x_coord']), 
-                            color='blue', marker='^', s=100, label='Training CPTs')
-                
-                # Plottiamo le CPT di testing
-                test_cpts = nearby_cpts[~data_to_use.groupby('cpt_id')['is_train'].first()]
-                if len(test_cpts) > 0:
-                    ax1.scatter(test_cpts['x_coord'], np.zeros_like(test_cpts['x_coord']), 
-                            color='red', marker='o', s=100, label='Testing CPTs')
-                    ax2.scatter(test_cpts['x_coord'], np.zeros_like(test_cpts['x_coord']), 
-                            color='red', marker='o', s=100, label='Testing CPTs')
-        
-        # Imposta titoli e etichette
-        ax1.set_title("Modello ML (Predetto)")
-        ax2.set_title("Modello Geotecnico (Reale)")
-        
-        ax1.set_xlabel(xlabel)
-        ax1.set_ylabel(ylabel)
-        ax2.set_xlabel(xlabel)
-        
-        # Colorbar per entrambi i subplot
-        cbar1 = plt.colorbar(im1, ax=ax1)
-        cbar1.set_label('Tipo di Suolo')
-        
-        cbar2 = plt.colorbar(im2, ax=ax2)
-        cbar2.set_label('Tipo di Suolo')
-        
-        # Adatta i tick delle colorbar al numero intero di tipi di suolo
-        soil_types = sorted(set(self.soil_types))
-        if soil_types:
-            min_soil = min(soil_types)
-            max_soil = max(soil_types)
-            ticks = np.arange(min_soil, max_soil + 1)
-            
-            cbar1.set_ticks(ticks)
-            cbar2.set_ticks(ticks)
-            
-            # Aggiungi abbreviazioni dei suoli alle colorbar
-            tick_labels = [f"{st} - {self.soil_manager.get_abbreviation(st)}" for st in ticks]
-            cbar1.set_ticklabels(tick_labels)
-            cbar2.set_ticklabels(tick_labels)
-        
-        plt.suptitle(title, fontsize=16)
-        plt.tight_layout()
-        
-        plt.show()
-        
-        return fig
-
-    def _extract_cross_section(self, model_data, axis='x', position=None, index=None):
-        """
-        Estrae una sezione trasversale dal modello 3D
-        
-        Parameters:
-        -----------
-        model_data : dict
-            Dati del modello 3D
-        axis : str
-            Asse lungo il quale estrarre la sezione ('x', 'y' o 'z')
-        position : float, optional
-            Posizione esatta dove estrarre la sezione lungo l'asse specificato
-        index : int, optional
-            Indice della slice da estrarre (alternativa a position)
-        
-        Returns:
-        --------
-        dict
-            Dati della sezione trasversale
-        """
-        # Estrai i dati della griglia
-        if 'grid_data' in model_data:
-            X = model_data['grid_data']['X']
-            Y = model_data['grid_data']['Y']
-            Z = model_data['grid_data']['Z']
-            values = model_data['grid_data']['values']
-        else:
-            X = model_data['X']
-            Y = model_data['Y']
-            Z = model_data['Z']
-            values = model_data['values']
-        
-        # Determina gli assi della sezione in base all'asse specificato
-        if axis.lower() == 'x':
-            # Sezione YZ ad un X costante
-            if position is not None:
-                # Trova l'indice più vicino alla posizione specificata
-                x_values = np.unique(X)
-                idx = np.abs(x_values - position).argmin()
-            elif index is not None:
-                # Usa l'indice specificato
-                idx = index
-            else:
-                # Usa il valore centrale di default
-                idx = X.shape[0] // 2
-            
-            # Estrai la sezione
-            section_values = values[idx, :, :]
-            coord1 = Y[idx, :, :]
-            coord2 = Z[idx, :, :]
-            axis1_label = 'Y Coordinate (m)'
-            axis2_label = 'Depth (m)'
-            section_position = X[idx, 0, 0]
-            title = f'Sezione YZ a X = {section_position:.2f}m'
-            
-        elif axis.lower() == 'y':
-            # Sezione XZ ad un Y costante
-            if position is not None:
-                # Trova l'indice più vicino alla posizione specificata
-                y_values = np.unique(Y)
-                idx = np.abs(y_values - position).argmin()
-            elif index is not None:
-                # Usa l'indice specificato
-                idx = index
-            else:
-                # Usa il valore centrale di default
-                idx = Y.shape[1] // 2
-            
-            # Estrai la sezione
-            section_values = values[:, idx, :]
-            coord1 = X[:, idx, :]
-            coord2 = Z[:, idx, :]
-            axis1_label = 'X Coordinate (m)'
-            axis2_label = 'Depth (m)'
-            section_position = Y[0, idx, 0]
-            title = f'Sezione XZ a Y = {section_position:.2f}m'
-            
-        elif axis.lower() == 'z':
-            # Sezione XY ad un Z costante (profondità)
-            if position is not None:
-                # Trova l'indice più vicino alla posizione specificata
-                z_values = np.unique(Z)
-                idx = np.abs(z_values - position).argmin()
-            elif index is not None:
-                # Usa l'indice specificato
-                idx = index
-            else:
-                # Usa il valore centrale di default
-                idx = Z.shape[2] // 2
-            
-            # Estrai la sezione
-            section_values = values[:, :, idx]
-            coord1 = X[:, :, idx]
-            coord2 = Y[:, :, idx]
-            axis1_label = 'X Coordinate (m)'
-            axis2_label = 'Y Coordinate (m)'
-            section_position = Z[0, 0, idx]
-            title = f'Sezione XY a profondità = {section_position:.2f}m'
-        
-        else:
-            raise ValueError(f"Asse non valido: {axis}. Usa 'x', 'y' o 'z'.")
-        
-        # Restituisci i dati della sezione
-        return {
-            'values': section_values,
-            'coord1': coord1,
-            'coord2': coord2,
-            'axis1_label': axis1_label,
-            'axis2_label': axis2_label,
-            'section_position': section_position,
-            'title': title,
-            'axis': axis
-        }
-    
     def create_interactive_cross_section_explorer(self, use_test_data=True):
         """
         Crea un'interfaccia interattiva per esplorare le sezioni trasversali
@@ -790,33 +520,43 @@ class CPT_3D_SoilModel:
         # Seleziona quali dati utilizzare
         data_to_use = self.cpt_data if use_test_data else self.train_data
         
-        # Riutilizza i modelli esistenti se disponibili, altrimenti creali
-        if hasattr(self, 'ml_model_data') and hasattr(self, 'real_model_data'):
-            ml_model_data = self.ml_model_data
-            real_model_data = self.real_model_data
-            print("Utilizzando modelli esistenti per la visualizzazione interattiva")
-        else:
-            # Crea il modello ML (basato sulle predizioni)
-            ml_model_data = self._create_soil_model('predicted_soil', resolution=5, use_test_data=use_test_data)
-        
-            # Crea il modello geotecnico (basato sui dati reali)
-            real_model_data = self._create_soil_model('soil []', resolution=5, use_test_data=use_test_data)
-            
-            # Memorizza i modelli come attributi
-            self.ml_model_data = ml_model_data
-            self.real_model_data = real_model_data
-        
-        # Importa la funzione di creazione dell'interfaccia
-        from visualization.cross_sections import create_interactive_cross_section_ui
+        # Crea i modelli ML e geotecnico se non esistono già
+        self._create_soil_models(use_test_data)
         
         # Crea l'interfaccia interattiva (senza mostrarla automaticamente)
         fig = create_interactive_cross_section_ui(
-            data_to_use, ml_model_data, real_model_data,
+            data_to_use, self.ml_model_data, self.real_model_data,
             soil_types=self.soil_types, soil_colors=self.soil_colors,
             show=False  # Non mostrare automaticamente
         )
         
         return fig
+    
+    def _create_soil_models(self, use_test_data=True):
+        """
+        Crea i modelli ML e geotecnico se non esistono già
+        
+        Parameters:
+        -----------
+        use_test_data : bool
+            Se includere i dati di test nella visualizzazione
+        """
+        # Riutilizza i modelli esistenti se disponibili, altrimenti creali
+        if not (hasattr(self, 'ml_model_data') and hasattr(self, 'real_model_data') and
+                self.ml_model_data is not None and self.real_model_data is not None):
+            print("Creando nuovi modelli per interpolazione...")
+            
+            # Crea il modello ML (basato sulle predizioni) con metodo nearest neighbor (più robusto)
+            ml_model_data = self._create_soil_model('predicted_soil', 5, use_test_data)
+            
+            # Crea il modello geotecnico (basato sui dati reali) con lo stesso metodo
+            real_model_data = self._create_soil_model('soil []', 5, use_test_data)
+            
+            # Memorizza i modelli come attributi
+            self.ml_model_data = ml_model_data
+            self.real_model_data = real_model_data
+        else:
+            print("Utilizzando modelli esistenti per la visualizzazione")
     
     def evaluate_on_test_data(self):
         """
@@ -937,8 +677,7 @@ class CPT_3D_SoilModel:
         print("Predicting soil types for all data...")
         
         # Predict on all data
-        from core.classifier import predict_soil_types as predict_func
-        self.cpt_data = predict_func(
+        self.cpt_data = predict_soil_types(
             self.cpt_data,
             self.soil_model,
             self.scaler,
@@ -1047,11 +786,8 @@ class CPT_3D_SoilModel:
         # Verifica la presenza delle colonne necessarie
         self._verify_required_columns(data_to_use, soil_col)
         
-        # Import solo qui per evitare importazioni circolari
-        from core.interpolator import create_3d_interpolation as interp_func
-        
         # Esegui l'interpolazione
-        interp_result = interp_func(
+        interp_result = create_3d_interpolation(
             data_to_use,
             resolution=resolution,
             is_train_only=not use_test_data,
@@ -1084,32 +820,46 @@ class CPT_3D_SoilModel:
         print(f"First 5 rows of data with {soil_col} column:")
         print(df[required_cols + [soil_col]].head())
     
-    def create_3d_interpolation_alternative(self, resolution=10, use_test_data=False, soil_col='predicted_soil'):
+    def _create_soil_model(self, soil_col, resolution, use_test_data):
         """
-        Create a 3D interpolation of soil types using nearest neighbor method
-        which is more robust than LinearNDInterpolator for problematic datasets
+        Create a soil model with a given soil column, trying different methods if necessary
         
         Parameters:
         -----------
+        soil_col : str
+            Soil column name
         resolution : int
             Resolution of the interpolation grid
         use_test_data : bool
             Whether to include test data in the interpolation
-        soil_col : str
-            Column name containing soil types to interpolate
             
         Returns:
         --------
-        dict
-            Grid data for 3D visualization
+        dict or None
+            Grid data for 3D visualization or None if failed
         """
-        # Per compatibilità con il codice esistente, questo è ora solo un wrapper
-        return self.create_3d_interpolation(
-            resolution=resolution,
-            use_test_data=use_test_data,
-            soil_col=soil_col,
-            method='nearest'
-        )
+        print(f"Creating soil model from '{soil_col}'...")
+        try:
+            # First try nearest neighbor method (more robust)
+            return self.create_3d_interpolation(
+                resolution=resolution,
+                use_test_data=use_test_data,
+                soil_col=soil_col,
+                method='nearest'
+            )
+        except Exception as e:
+            print(f"Nearest neighbor interpolation failed: {e}")
+            print("Trying linear interpolation...")
+            try:
+                return self.create_3d_interpolation(
+                    resolution=resolution,
+                    use_test_data=use_test_data,
+                    soil_col=soil_col,
+                    method='linear'
+                )
+            except Exception as e:
+                print(f"Failed to create soil model: {e}")
+                return None
     
     def visualize_comparative_models(self, resolution=10):
         """
@@ -1170,7 +920,6 @@ class CPT_3D_SoilModel:
         try:
             # Crea il modello geotecnico con bounds unificati
             print("\nCreando modello geotecnico dai dati CPT reali...")
-            from core.interpolator import create_3d_interpolation
             real_model_data = create_3d_interpolation(
                 data_to_use,
                 resolution=resolution,
@@ -1191,6 +940,10 @@ class CPT_3D_SoilModel:
                 fixed_bounds=unified_bounds
             )
             
+            # Memorizza i modelli come attributi
+            self.ml_model_data = ml_model_data
+            self.real_model_data = real_model_data
+            
             # Aggiungi informazioni di debug sulle coordinate nei dati del modello
             if 'grid_data' in real_model_data:
                 print("Structure: usando 'grid_data'")
@@ -1205,9 +958,8 @@ class CPT_3D_SoilModel:
             print(f"Range Y nella griglia: {grid_y_real.min()} - {grid_y_real.max()}")
             
             # Visualizza i modelli
-            if real_model_data and ml_model_data:
+            if ml_model_data and real_model_data:
                 print("\nVisualizzazione comparativa dei due modelli 3D...")
-                from visualization.model_3d import visualize_compare_3d_models
                 return visualize_compare_3d_models(
                     self.cpt_data,
                     ml_model_data, 
@@ -1226,7 +978,6 @@ class CPT_3D_SoilModel:
             try:
                 # Visualizza il modello ML
                 print("Visualizzazione del modello ML...")
-                from visualization.model_3d import visualize_3d_model
                 ml_fig = visualize_3d_model(
                     self.cpt_data,
                     ml_model_data['grid_data'] if 'grid_data' in ml_model_data else ml_model_data,
@@ -1251,47 +1002,6 @@ class CPT_3D_SoilModel:
                 
         return None
     
-    def _create_soil_model(self, soil_col, resolution, use_test_data):
-        """
-        Create a soil model with a given soil column, trying different methods if necessary
-        
-        Parameters:
-        -----------
-        soil_col : str
-            Soil column name
-        resolution : int
-            Resolution of the interpolation grid
-        use_test_data : bool
-            Whether to include test data in the interpolation
-            
-        Returns:
-        --------
-        dict or None
-            Grid data for 3D visualization or None if failed
-        """
-        print(f"Creating soil model from '{soil_col}'...")
-        try:
-            # First try nearest neighbor method (more robust)
-            return self.create_3d_interpolation(
-                resolution=resolution,
-                use_test_data=use_test_data,
-                soil_col=soil_col,
-                method='nearest'
-            )
-        except Exception as e:
-            print(f"Nearest neighbor interpolation failed: {e}")
-            print("Trying linear interpolation...")
-            try:
-                return self.create_3d_interpolation(
-                    resolution=resolution,
-                    use_test_data=use_test_data,
-                    soil_col=soil_col,
-                    method='linear'
-                )
-            except Exception as e:
-                print(f"Failed to create soil model: {e}")
-                return None
-    
     def visualize_3d_model(self, interpolation_data=None, interactive=True, use_test_data=False):
         """
         Visualize a single 3D soil model
@@ -1306,7 +1016,8 @@ class CPT_3D_SoilModel:
             Whether to include test data in the visualization
         """
         if interpolation_data is None:
-            interpolation_data = self._create_default_interpolation(use_test_data)
+            # Create model if not provided
+            interpolation_data = self._create_soil_model('predicted_soil', 5, use_test_data)
             if interpolation_data is None:
                 return None
                     
@@ -1320,37 +1031,6 @@ class CPT_3D_SoilModel:
             self.soil_colors,
             interactive
         )
-    
-    def _create_default_interpolation(self, use_test_data):
-        """
-        Create default interpolation for visualization
-        
-        Parameters:
-        -----------
-        use_test_data : bool
-            Whether to include test data in the interpolation
-            
-        Returns:
-        --------
-        dict or None
-            Grid data for 3D visualization or None if failed
-        """
-        try:
-            return self.create_3d_interpolation(
-                use_test_data=use_test_data,
-                method='nearest'
-            )
-        except Exception as e:
-            print(f"Nearest neighbor interpolation failed: {e}")
-            try:
-                print("Trying linear interpolation...")
-                return self.create_3d_interpolation(
-                    use_test_data=use_test_data,
-                    method='linear'
-                )
-            except Exception as e:
-                print(f"Linear interpolation also failed: {e}")
-                return None
     
     def save_model(self, filename='cpt_soil_model.pkl'):
         """

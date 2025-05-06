@@ -30,7 +30,7 @@ def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='p
     dataset_type = "training data only" if is_train_only else "all data (training + testing)"
     print(f"Creating 3D soil interpolation using {dataset_type} with '{soil_col}' column...")
     
-    # Verifica che la colonna esista
+    # Verify that the column exists
     if soil_col not in data.columns:
         raise ValueError(f"Required column '{soil_col}' not found in data.")
     
@@ -39,7 +39,7 @@ def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='p
     coords_df = data[['x_coord', 'y_coord', depth_col]].copy()
     values = data[soil_col].values
     
-    # Stampa i valori unici di x_coord e y_coord per debug
+    # Print unique coordinate values for debugging
     print(f"Unique x_coord values: {sorted(coords_df['x_coord'].unique())}")
     print(f"Unique y_coord values: {sorted(coords_df['y_coord'].unique())}")
     
@@ -79,8 +79,7 @@ def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='p
     # Store the bounds used for this interpolation for reference
     bounds_used = (x_min, x_max, y_min, y_max, z_min, z_max)
     
-    # Per garantire compatibilità con entrambi gli stili di accesso ai dati,
-    # restituiamo sia la struttura 'grid_data' nidificata che gli attributi diretti
+    # Return both nested grid_data structure and direct access attributes for backward compatibility
     result = {
         'grid_data': {
             'X': X,
@@ -90,7 +89,7 @@ def create_3d_interpolation(data, resolution=10, is_train_only=True, soil_col='p
         },
         'interpolator': interpolator,
         'bounds': bounds_used,
-        # Aggiungiamo anche l'accesso diretto per retrocompatibilità
+        # Direct access for backward compatibility
         'X': X,
         'Y': Y,
         'Z': Z,
@@ -209,10 +208,7 @@ def _create_linear_interpolation(points, values, X, Y, Z):
     print(f"Interpolating {len(grid_points)} points...")
     
     # Handle different interpolator types
-    if interpolator_type == "LinearNDInterpolator":
-        grid_values = interpolator(grid_points)
-    else:
-        grid_values = interpolator(grid_points)
+    grid_values = interpolator(grid_points)
     
     # Reshape back to grid
     grid_values = grid_values.reshape(X.shape)
@@ -238,7 +234,6 @@ def _create_nearest_interpolation(points, values, X, Y, Z):
     grid_values, interpolator : tuple
         Interpolated values and interpolator function
     """
-    # Prepare for nearest neighbor interpolation
     # Create KD-tree from the source points
     tree = cKDTree(points)
     
@@ -263,30 +258,3 @@ def _create_nearest_interpolation(points, values, X, Y, Z):
         return values[idx]
     
     return grid_values, nn_interpolator
-
-
-# Funzione wrapper per compatibilità con il codice esistente
-def create_3d_interpolation_alternative(data, resolution=10, is_train_only=True, soil_col='predicted_soil', fixed_bounds=None):
-    """
-    Create a 3D interpolation of soil types using nearest neighbor method
-    which is more robust than LinearNDInterpolator for problematic datasets
-    
-    Parameters:
-    -----------
-    data : pandas.DataFrame
-        DataFrame containing the CPT data with predicted soil types
-    resolution : int
-        Resolution of the interpolation grid (smaller = higher resolution)
-    is_train_only : bool
-        Flag indicating if only training data is being used
-    soil_col : str
-        Column name containing soil types to interpolate
-    fixed_bounds : tuple, optional
-        Fixed bounds (x_min, x_max, y_min, y_max, z_min, z_max) to use for grid creation
-        
-    Returns:
-    --------
-    dict
-        Dictionary containing interpolation results including grid data and interpolator
-    """
-    return create_3d_interpolation(data, resolution, is_train_only, soil_col, method='nearest', fixed_bounds=fixed_bounds)
