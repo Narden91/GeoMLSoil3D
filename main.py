@@ -14,41 +14,6 @@ from utils.config import (
 from visualization.plots import plot_soil_legend
 
 
-def try_alternative_visualization(framework, interpolation, display):
-    """
-    Try alternative visualization methods if primary method fails
-    
-    Parameters:
-    -----------
-    framework : CPT_3D_SoilModel
-        Framework instance
-    interpolation : dict
-        Interpolation configuration
-    display : dict
-        Display configuration
-    """
-    print("\nTrying alternative visualization method...")
-    resolution = interpolation.get('resolution', 5)
-    
-    try:
-        # Try using nearest neighbor interpolation
-        interpolation_data = framework.create_3d_interpolation(
-            resolution=resolution,
-            use_test_data=True,
-            method='nearest'
-        )
-        
-        # Visualize model
-        framework.visualize_3d_model(
-            interpolation_data=interpolation_data,
-            interactive=display.get('interactive_visualization', True),
-            use_test_data=True
-        )
-    except Exception as e:
-        print(f"Alternative visualization also failed: {e}")
-        print("Consider visualizing only CPT profiles or cross-sections.")
-
-
 def run_foundation_analysis(framework, config):
     """
     Esegue l'analisi delle fondamenta e delle tecniche costruttive ottimali
