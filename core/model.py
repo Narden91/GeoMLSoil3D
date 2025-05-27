@@ -444,6 +444,43 @@ class CPT_3D_SoilModel:
         
         return fig
     
+    def visualize_3d_model_bounded(self, padding=5.0, use_test_data=True):
+        """
+        Visualize the 3D soil model constrained to the bounds of CPT locations
+        
+        Parameters:
+        -----------
+        padding : float
+            Additional padding around the CPT bounds in meters
+        use_test_data : bool
+            Whether to include test data in the visualization
+            
+        Returns:
+        --------
+        plotly.graph_objects.Figure
+            Interactive 3D visualization
+        """
+        from visualization.bounded_viewer import visualize_3d_model_bounded
+        
+        # Make sure we have a model to visualize
+        if not hasattr(self, 'ml_model_data') or self.ml_model_data is None:
+            print("Creating 3D model for bounded visualization...")
+            self.ml_model_data = self._create_soil_model('predicted_soil', 5, use_test_data)
+            if self.ml_model_data is None:
+                print("Failed to create 3D model. Check your data.")
+                return None
+        
+        # Choose which dataset to visualize
+        data_to_visualize = self.cpt_data if use_test_data else self.train_data
+        
+        return visualize_3d_model_bounded(
+            data_to_visualize, 
+            self.ml_model_data,
+            soil_types=self.soil_types,
+            soil_colors=self.soil_colors,
+            padding=padding
+        )
+    
     def visualize_cross_sections(self, axis='x', position=None, index=None, use_test_data=True):
         """
         Visualizza sezioni trasversali che confrontano il modello predetto con i dati reali
@@ -1001,6 +1038,38 @@ class CPT_3D_SoilModel:
                 print(f"Anche la visualizzazione alternativa è fallita: {e2}")
                 
         return None
+    
+    def visualize_3d_model_section(self, center_cpt=None, radius=10.0):
+        """
+        Visualize a smaller section of the 3D soil model around specific CPT sites
+        
+        Parameters:
+        -----------
+        center_cpt : str, optional
+            ID of the CPT to center the section around. If None, the middle of all CPTs is used
+        radius : float
+            Radius (in meters) of the section to visualize around the center point
+            
+        Returns:
+        --------
+        plotly.graph_objects.Figure
+            Interactive 3D visualization of the section
+        """
+        from visualization.focused_section import visualize_3d_model_section
+        
+        # Make sure we have a model to visualize
+        if not hasattr(self, 'ml_model_data') or self.ml_model_data is None:
+            print("Creating 3D model for section visualization...")
+            self.ml_model_data = self._create_soil_model('predicted_soil', 5, True)
+        
+        return visualize_3d_model_section(
+            self.cpt_data, 
+            self.ml_model_data,
+            center_cpt=center_cpt,
+            radius=radius,
+            soil_types=self.soil_types,
+            soil_colors=self.soil_colors
+        )
     
     def visualize_3d_model(self, interpolation_data=None, interactive=True, use_test_data=False):
         """

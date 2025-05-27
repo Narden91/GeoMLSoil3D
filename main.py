@@ -2,6 +2,9 @@ import os
 import sys
 import traceback
 
+from visualization.focused_section import visualize_3d_model_section
+from visualization.bounded_viewer import visualize_3d_model_bounded
+
 from core.model import CPT_3D_SoilModel
 from core.foundation_analysis import analyze_foundation_compatibility
 from utils.soil_types import SoilTypeManager
@@ -133,6 +136,12 @@ def main(config_path="config.yaml"):
                 framework,
                 foundation_analysis_cfg
             )
+            
+        # fig = framework.visualize_3d_model_section(radius=20.0)
+        # fig.show()
+        
+        fig = framework.visualize_3d_model_bounded(padding=5.0)
+        fig.show()
         
         # Save model
         model_output = paths.get('model_output', "cpt_soil_model.pkl")
