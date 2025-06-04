@@ -140,7 +140,7 @@ def main(config_path="config.yaml"):
         # fig = framework.visualize_3d_model_section(radius=20.0)
         # fig.show()
         
-        fig = framework.visualize_3d_model_bounded(padding=5.0)
+        fig = framework.visualize_3d_model_bounded(padding=2.0)
         fig.show()
         
         # Save model

@@ -178,7 +178,6 @@ def visualize_3d_model_section(cpt_data, interpolation_data, center_cpt=None, ra
         name='Center Point'
     ))
     
-    # Add a circle to show the section boundary
     theta = np.linspace(0, 2*np.pi, 100)
     circle_x = center_x + radius * np.cos(theta)
     circle_y = center_y + radius * np.sin(theta)
