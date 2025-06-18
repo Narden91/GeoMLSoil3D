@@ -105,7 +105,7 @@ def main(config_path="config.yaml"):
         plot_soil_legend()
     
     try:
-        # Load and explore data
+        # Load and explore
         framework = run_data_loading_phase(
             framework, 
             paths, 
